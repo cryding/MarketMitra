@@ -398,15 +398,6 @@ private data class LiveResponse(
     val sourceSummary: String,
     val analysisSummary: String,
     val priceSummary: String,
-    val profitSummary: String
-)
-
-private data class LiveResponse(
-    val items: List<ResearchItem>,
-    val tips: List<OpportunityTip>,
-    val sourceSummary: String,
-    val analysisSummary: String,
-    val priceSummary: String,
     val profitSummary: String,
     val competitionSummary: String,
     val businessPlanSummary: String,
