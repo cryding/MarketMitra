@@ -1,6 +1,7 @@
 package com.marketmitra.app
 
 import android.os.Bundle
+import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -44,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -101,6 +103,7 @@ private fun MarketMitraScreen() {
     var busy by remember { mutableStateOf(false) }
     var hasSearched by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     Surface(modifier = Modifier.fillMaxSize(), color = Page) {
         LazyColumn(
@@ -230,7 +233,7 @@ private fun MarketMitraScreen() {
                 item { Text("Live public listings", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Ink) }
                 items(itemsFound) { item ->
                     Card(
-                        modifier = Modifier.fillMaxWidth().clickable { openSource(item.url) },
+                        modifier = Modifier.fillMaxWidth().clickable { openSource(context, item.url) },
                         colors = CardDefaults.cardColors(containerColor = Color.White),
                         shape = RoundedCornerShape(14.dp),
                         border = androidx.compose.foundation.BorderStroke(1.dp, Border)
@@ -329,9 +332,9 @@ private fun fetchLiveResearch(query: String): LiveResponse {
     }
 }
 
-private fun ComponentActivity.openSource(url: String) {
+private fun openSource(context: Context, url: String) {
     if (!url.startsWith("https://")) return
     runCatching {
-        startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
     }
 }
