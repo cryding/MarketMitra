@@ -11,7 +11,7 @@ import urllib.robotparser
 from typing import Any
 
 from bs4 import BeautifulSoup
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field, HttpUrl
 
 app = FastAPI(
@@ -272,7 +272,7 @@ def _suggest_opportunities(query: str, items: list[dict[str, Any]]) -> list[dict
 
 
 @app.get("/api/v1/research/live")
-def research_live(q: str = Field(default="", max_length=100)) -> dict[str, Any]:
+def research_live(q: str = Query(default="", max_length=100)) -> dict[str, Any]:
     """Search public marketplace pages live, where robots.txt and access policy permit."""
     query = q.strip()
     if len(query) < 2:
