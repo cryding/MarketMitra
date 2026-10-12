@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import math
 import re
 import socket
 import urllib.error
@@ -496,4 +497,137 @@ def analyze_market(request: MarketAnalysisRequest) -> dict[str, Any]:
             "Validate demand and supplier quality independently before investing."
         ],
         "fetched_at_utc": research.get("fetched_at_utc"),
+    }
+
+
+class EmpireWorkspaceRequest(MarketAnalysisRequest):
+    """One-query workspace for market, competition, sourcing and budget planning."""
+    startup_budget_inr: float = Field(default=5000, gt=0, le=100_000_000)
+    monthly_fixed_costs_inr: float = Field(default=0, ge=0, le=100_000_000)
+    target_monthly_orders: int = Field(default=30, ge=1, le=1_000_000)
+    location: str = Field(default="India", min_length=2, max_length=100)
+    sourcing_type: str = Field(default="wholesale", max_length=40)
+
+
+def _supplier_search_links(query: str, location: str, sourcing_type: str) -> list[dict[str, str]]:
+    """Return search entry points, not fabricated or verified supplier listings."""
+    search = urllib.parse.quote_plus(query + " " + sourcing_type + " supplier")
+    local_search = urllib.parse.quote_plus(query + " supplier " + location)
+    return [
+        {"name": "IndiaMART", "url": "https://dir.indiamart.com/search.mp?ss=" + search, "type": "B2B supplier directory"},
+        {"name": "TradeIndia", "url": "https://www.tradeindia.com/search.html?keyword=" + search, "type": "B2B supplier directory"},
+        {"name": "ExportersIndia", "url": "https://www.exportersindia.com/search.php?srch_catg_ty=prod&term=" + search, "type": "Supplier and manufacturer directory"},
+        {"name": "Google Maps", "url": "https://www.google.com/maps/search/" + local_search, "type": "Local sourcing discovery"},
+    ]
+
+
+@app.post("/api/v1/empire/workspace")
+def empire_workspace(request: EmpireWorkspaceRequest) -> dict[str, Any]:
+    """Provide a single transparent workspace response without a paid AI service."""
+    analysis_input = MarketAnalysisRequest(
+        q=request.q,
+        unit_cost_inr=request.unit_cost_inr,
+        selling_price_inr=request.selling_price_inr,
+        packaging_cost_inr=request.packaging_cost_inr,
+        shipping_cost_inr=request.shipping_cost_inr,
+        marketplace_fee_pct=request.marketplace_fee_pct,
+        return_loss_pct=request.return_loss_pct,
+        ads_cost_per_order_inr=request.ads_cost_per_order_inr,
+    )
+    analysis = analyze_market(analysis_input)
+    items = analysis["items"]
+    snapshot = analysis["market_snapshot"]
+    price_summary = snapshot.get("price_summary")
+    count = snapshot["listing_count"]
+    source_count = snapshot["sources_with_results"]
+
+    # A listing-count signal is not verified seller count or sales volume.
+    if count >= 20:
+        competition_level = "high_listing_activity_signal"
+        competition_note = "Many accessible listings were found. This is a listing-activity signal, not a verified seller count or proof of sales."
+    elif count >= 5:
+        competition_level = "moderate_listing_activity_signal"
+        competition_note = "Some accessible listings were found. Compare product quality, delivery, reviews and differentiation before entering."
+    else:
+        competition_level = "insufficient_competition_evidence"
+        competition_note = "Too few accessible listings to assess competition. Sources may block collection; absence of results does not prove low competition or demand."
+
+    supplier_links = _supplier_search_links(request.q.strip(), request.location.strip(), request.sourcing_type.strip())
+    economics = analysis.get("unit_economics")
+    business_plan: dict[str, Any] = {
+        "currency": "INR",
+        "startup_budget_inr": _money(request.startup_budget_inr),
+        "monthly_fixed_costs_inr": _money(request.monthly_fixed_costs_inr),
+        "target_monthly_orders": request.target_monthly_orders,
+        "recommended_test_budget_allocation": [
+            {"category": "Samples and quality checks", "pct": 20, "amount_inr": _money(request.startup_budget_inr * .20)},
+            {"category": "First small inventory batch", "pct": 35, "amount_inr": _money(request.startup_budget_inr * .35)},
+            {"category": "Packaging and fulfilment setup", "pct": 15, "amount_inr": _money(request.startup_budget_inr * .15)},
+            {"category": "Content and customer testing", "pct": 10, "amount_inr": _money(request.startup_budget_inr * .10)},
+            {"category": "Cash reserve and unexpected costs", "pct": 20, "amount_inr": _money(request.startup_budget_inr * .20)},
+        ],
+        "note": "Illustrative starting allocation, not a supplier quote or guaranteed return. Adjust to actual minimum order quantities, fees and local rules.",
+        "supplier_due_diligence": [
+            "Ask for a sample and verify material, size, finish and packaging before bulk payment.",
+            "Confirm GST invoice/business identity, address, payment beneficiary and return/replacement terms.",
+            "Request written MOQ, lead time, shipping charge, defect policy and price validity.",
+            "Compare at least three suppliers; never treat a directory listing as proof of legitimacy.",
+            "Avoid advance payments you cannot afford to lose; verify the supplier independently."
+        ],
+    }
+    if economics and economics.get("status") != "needs_selling_price":
+        profit = economics.get("estimated_net_profit_per_order")
+        if profit is not None:
+            monthly_contribution = float(profit) * request.target_monthly_orders
+            business_plan["scenario"] = {
+                "price_basis": economics.get("price_basis"),
+                "estimated_profit_per_order_inr": profit,
+                "target_monthly_orders": request.target_monthly_orders,
+                "estimated_monthly_contribution_before_fixed_costs_inr": _money(monthly_contribution),
+                "estimated_monthly_result_after_fixed_costs_inr": _money(monthly_contribution - request.monthly_fixed_costs_inr),
+                "break_even_orders_per_month": (
+                    max(0, math.ceil(request.monthly_fixed_costs_inr / float(profit)))
+                    if float(profit) > 0 and request.monthly_fixed_costs_inr > 0
+                    else (0 if float(profit) > 0 else None)
+                ),
+                "estimated_units_affordable_at_product_cost": (
+                    int(request.startup_budget_inr // request.unit_cost_inr)
+                    if request.unit_cost_inr and request.unit_cost_inr > 0 else None
+                ),
+                "note": "Scenario math based on user-supplied assumptions; taxes, platform fees, returns and overhead may be incomplete."
+            }
+    return {
+        "mode": "empire_business_workspace",
+        "query": request.q.strip(),
+        "generated_at_utc": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+        "market_analysis": analysis,
+        "competition": {
+            "level": competition_level,
+            "listing_count_signal": count,
+            "sources_with_results": source_count,
+            "observed_price_range": price_summary,
+            "note": competition_note,
+            "differentiation_checklist": [
+                "Compare like-for-like quality, material, sizes, bundle contents and delivery time.",
+                "Review negative customer feedback and return reasons where publicly available.",
+                "Choose a specific customer segment or use case rather than copying the lowest price.",
+                "Do not infer sales volume from listing counts or reviews alone."
+            ]
+        },
+        "supplier_discovery": {
+            "mode": "search_links_only",
+            "query": request.q.strip(),
+            "location": request.location.strip(),
+            "links": supplier_links,
+            "verification_required": True,
+            "note": "These links open supplier-search pages. MarketMitra has not verified individual suppliers, prices, certifications or stock."
+        },
+        "business_plan": business_plan,
+        "next_actions": [
+            {"priority": "1", "action": "Verify the top comparable listings and collect exact landed prices, shipping, return and quality details."},
+            {"priority": "2", "action": "Contact at least three suppliers and compare samples, MOQ, lead time, invoice and replacement terms."},
+            {"priority": "3", "action": "Recalculate profit with actual platform fees, taxes, returns and advertising cost before buying inventory."},
+            {"priority": "4", "action": "Test the smallest affordable batch, track real conversion and returns, then decide whether to scale or stop."}
+        ],
+        "safety_note": "Research scores and financial projections are decision aids, not guaranteed demand, profits or business success.",
     }
