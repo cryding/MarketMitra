@@ -74,6 +74,7 @@ private data class ResearchItem(
 )
 
 private data class OpportunityTip(val title: String, val reason: String)
+private data class SupplierLink(val name: String, val type: String, val url: String)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -109,6 +110,13 @@ private fun MarketMitraScreen() {
     var marketplaceFee by remember { mutableStateOf("") }
     var returnLoss by remember { mutableStateOf("") }
     var adsCost by remember { mutableStateOf("") }
+    var startupBudget by remember { mutableStateOf("5000") }
+    var monthlyFixedCosts by remember { mutableStateOf("1000") }
+    var targetOrders by remember { mutableStateOf("30") }
+    var sourcingLocation by remember { mutableStateOf("Itahar, West Bengal") }
+    var competitionSummary by remember { mutableStateOf("") }
+    var businessPlanSummary by remember { mutableStateOf("") }
+    var supplierLinks by remember { mutableStateOf<List<SupplierLink>>(emptyList()) }
     var message by remember { mutableStateOf("Enter a product or category to start live research.") }
     var busy by remember { mutableStateOf(false) }
     var hasSearched by remember { mutableStateOf(false) }
@@ -174,6 +182,16 @@ private fun MarketMitraScreen() {
                             OutlinedTextField(value = returnLoss, onValueChange = { returnLoss = it }, modifier = Modifier.weight(1f), singleLine = true, label = { Text("Return loss %") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), shape = RoundedCornerShape(10.dp))
                         }
                         OutlinedTextField(value = adsCost, onValueChange = { adsCost = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Ads cost per order ₹") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), shape = RoundedCornerShape(10.dp))
+                        Spacer(Modifier.height(12.dp))
+                        Text("Business launch plan", fontWeight = FontWeight.SemiBold, color = Ink)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(value = startupBudget, onValueChange = { startupBudget = it }, modifier = Modifier.weight(1f), singleLine = true, label = { Text("Start budget ₹") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), shape = RoundedCornerShape(10.dp))
+                            OutlinedTextField(value = monthlyFixedCosts, onValueChange = { monthlyFixedCosts = it }, modifier = Modifier.weight(1f), singleLine = true, label = { Text("Monthly fixed cost ₹") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), shape = RoundedCornerShape(10.dp))
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(value = targetOrders, onValueChange = { targetOrders = it }, modifier = Modifier.weight(1f), singleLine = true, label = { Text("Monthly orders target") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), shape = RoundedCornerShape(10.dp))
+                            OutlinedTextField(value = sourcingLocation, onValueChange = { sourcingLocation = it }, modifier = Modifier.weight(1f), singleLine = true, label = { Text("Supplier location") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text), shape = RoundedCornerShape(10.dp))
+                        }
                         Spacer(Modifier.height(10.dp))
                         Button(
                             onClick = {
@@ -185,10 +203,13 @@ private fun MarketMitraScreen() {
                                     analysisSummary = ""
                                     priceSummary = ""
                                     profitSummary = ""
-                                    message = "Researching listings and analysing business signals…"
+                                    competitionSummary = ""
+                                    businessPlanSummary = ""
+                                    supplierLinks = emptyList()
+                                    message = "Researching market, competitors, suppliers and business plan…"
                                     try {
                                         val response = withContext(Dispatchers.IO) {
-                                            fetchMarketAnalysis(query.trim(), unitCost, sellingPrice, packagingCost, shippingCost, marketplaceFee, returnLoss, adsCost)
+                                            fetchEmpireWorkspace(query.trim(), unitCost, sellingPrice, packagingCost, shippingCost, marketplaceFee, returnLoss, adsCost, startupBudget, monthlyFixedCosts, targetOrders, sourcingLocation)
                                         }
                                         itemsFound = response.items
                                         tips = response.tips
@@ -196,6 +217,9 @@ private fun MarketMitraScreen() {
                                         analysisSummary = response.analysisSummary
                                         priceSummary = response.priceSummary
                                         profitSummary = response.profitSummary
+                                        competitionSummary = response.competitionSummary
+                                        businessPlanSummary = response.businessPlanSummary
+                                        supplierLinks = response.supplierLinks
                                         message = if (response.items.isEmpty()) {
                                             "No accessible listings returned this time. This does not prove there is no demand."
                                         } else {
@@ -249,25 +273,64 @@ private fun MarketMitraScreen() {
                 item {
                     Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(14.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Border)) {
                         Column(Modifier.padding(14.dp)) {
-                            Text("MARKET ANALYSIS", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("MARKET INTELLIGENCE", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(6.dp))
                             Text(analysisSummary, color = Ink, lineHeight = 20.sp)
                             if (priceSummary.isNotBlank()) {
                                 Spacer(Modifier.height(10.dp))
                                 Divider(color = Border)
                                 Spacer(Modifier.height(8.dp))
-                                Text("Observed public prices", color = Ink, fontWeight = FontWeight.SemiBold)
+                                Text("Competitor price range", color = Ink, fontWeight = FontWeight.SemiBold)
                                 Text(priceSummary, color = Muted, lineHeight = 19.sp)
+                            }
+                            if (competitionSummary.isNotBlank()) {
+                                Spacer(Modifier.height(10.dp))
+                                Divider(color = Border)
+                                Spacer(Modifier.height(8.dp))
+                                Text("Competition analysis", color = Ink, fontWeight = FontWeight.SemiBold)
+                                Text(competitionSummary, color = Muted, lineHeight = 19.sp)
                             }
                             if (profitSummary.isNotBlank()) {
                                 Spacer(Modifier.height(10.dp))
                                 Divider(color = Border)
                                 Spacer(Modifier.height(8.dp))
-                                Text("Unit economics", color = Ink, fontWeight = FontWeight.SemiBold)
+                                Text("Profit / loss scenario", color = Ink, fontWeight = FontWeight.SemiBold)
                                 Text(profitSummary, color = Green, lineHeight = 19.sp)
+                            }
+                            if (businessPlanSummary.isNotBlank()) {
+                                Spacer(Modifier.height(10.dp))
+                                Divider(color = Border)
+                                Spacer(Modifier.height(8.dp))
+                                Text("Business launch plan", color = Ink, fontWeight = FontWeight.SemiBold)
+                                Text(businessPlanSummary, color = Ink, lineHeight = 19.sp)
                             }
                         }
                     }
+                }
+            }
+
+            if (supplierLinks.isNotEmpty()) {
+                item { Text("Supplier discovery", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Ink) }
+                items(supplierLinks) { supplier ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth().clickable { openSource(context, supplier.url) },
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Border)
+                    ) {
+                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Storefront, contentDescription = null, tint = Blue)
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(supplier.name, fontWeight = FontWeight.SemiBold, color = Ink)
+                                Text(supplier.type, color = Muted, fontSize = 12.sp)
+                            }
+                            Text("Open ↗", color = Blue, fontSize = 12.sp)
+                        }
+                    }
+                }
+                item {
+                    Text("Supplier directory links are discovery tools, not verified supplier endorsements. Check GST/invoice, samples, MOQ, delivery and replacement terms.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
                 }
             }
 
@@ -338,7 +401,19 @@ private data class LiveResponse(
     val profitSummary: String
 )
 
-private fun fetchMarketAnalysis(
+private data class LiveResponse(
+    val items: List<ResearchItem>,
+    val tips: List<OpportunityTip>,
+    val sourceSummary: String,
+    val analysisSummary: String,
+    val priceSummary: String,
+    val profitSummary: String,
+    val competitionSummary: String,
+    val businessPlanSummary: String,
+    val supplierLinks: List<SupplierLink>
+)
+
+private fun fetchEmpireWorkspace(
     query: String,
     unitCost: String,
     sellingPrice: String,
@@ -346,14 +421,18 @@ private fun fetchMarketAnalysis(
     shippingCost: String,
     marketplaceFee: String,
     returnLoss: String,
-    adsCost: String
+    adsCost: String,
+    startupBudget: String,
+    monthlyFixedCosts: String,
+    targetOrders: String,
+    location: String
 ): LiveResponse {
     require(query.length >= 2) { "Please enter at least two characters." }
     val baseUrl = BuildConfig.API_BASE_URL.trimEnd('/')
     require(baseUrl.startsWith("https://")) {
         "Live research service is not connected yet. The backend must be deployed once; you do not need to enter an API URL in the app."
     }
-    val url = URL(baseUrl + "/api/v1/research/analyze")
+    val url = URL(baseUrl + "/api/v1/empire/workspace")
     val payload = JSONObject()
         .put("q", query)
         .put("packaging_cost_inr", packagingCost.toDoubleOrNull() ?: 0.0)
@@ -361,17 +440,22 @@ private fun fetchMarketAnalysis(
         .put("marketplace_fee_pct", marketplaceFee.toDoubleOrNull() ?: 0.0)
         .put("return_loss_pct", returnLoss.toDoubleOrNull() ?: 0.0)
         .put("ads_cost_per_order_inr", adsCost.toDoubleOrNull() ?: 0.0)
+        .put("startup_budget_inr", startupBudget.toDoubleOrNull() ?: 5000.0)
+        .put("monthly_fixed_costs_inr", monthlyFixedCosts.toDoubleOrNull() ?: 0.0)
+        .put("target_monthly_orders", targetOrders.toIntOrNull() ?: 30)
+        .put("location", location.ifBlank { "India" })
+        .put("sourcing_type", "wholesale")
     unitCost.toDoubleOrNull()?.let { payload.put("unit_cost_inr", it) }
     sellingPrice.toDoubleOrNull()?.let { payload.put("selling_price_inr", it) }
 
     val connection = url.openConnection() as HttpURLConnection
     connection.requestMethod = "POST"
     connection.connectTimeout = 12_000
-    connection.readTimeout = 30_000
+    connection.readTimeout = 35_000
     connection.doOutput = true
     connection.setRequestProperty("Accept", "application/json")
     connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-    connection.setRequestProperty("User-Agent", "MarketMitra-Android/0.2")
+    connection.setRequestProperty("User-Agent", "MarketMitra-Android/0.3")
     try {
         connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
         val code = connection.responseCode
@@ -380,8 +464,9 @@ private fun fetchMarketAnalysis(
         val json = JSONObject(body)
         if (code !in 200..299) throw IllegalStateException(json.optString("detail", "Research request failed (HTTP $code)."))
 
+        val analysis = json.optJSONObject("market_analysis") ?: JSONObject()
         val found = mutableListOf<ResearchItem>()
-        val array = json.optJSONArray("items")
+        val array = analysis.optJSONArray("items")
         if (array != null) {
             for (index in 0 until array.length()) {
                 val obj = array.optJSONObject(index) ?: continue
@@ -396,19 +481,25 @@ private fun fetchMarketAnalysis(
         }
 
         val recommendations = mutableListOf<OpportunityTip>()
-        val recommendationArray = json.optJSONArray("recommendations")
+        val recommendationArray = analysis.optJSONArray("recommendations")
         if (recommendationArray != null) {
             for (index in 0 until recommendationArray.length()) {
                 val obj = recommendationArray.optJSONObject(index) ?: continue
-                val priority = obj.optString("priority", "medium").uppercase()
                 recommendations.add(OpportunityTip(
-                    title = priority + " PRIORITY · " + obj.optString("action"),
+                    title = obj.optString("priority", "medium").uppercase() + " PRIORITY · " + obj.optString("action"),
                     reason = obj.optString("why")
                 ))
             }
         }
+        val actions = json.optJSONArray("next_actions")
+        if (actions != null) {
+            for (index in 0 until actions.length()) {
+                val obj = actions.optJSONObject(index) ?: continue
+                recommendations.add(OpportunityTip("NEXT STEP " + obj.optString("priority") + " · " + obj.optString("action"), "Action from the business workspace."))
+            }
+        }
 
-        val snapshot = json.optJSONObject("market_snapshot") ?: JSONObject()
+        val snapshot = analysis.optJSONObject("market_snapshot") ?: JSONObject()
         val sourceStatuses = mutableListOf<String>()
         val sourceArray = snapshot.optJSONArray("source_status")
         if (sourceArray != null) {
@@ -417,35 +508,70 @@ private fun fetchMarketAnalysis(
                 sourceStatuses.add(obj.optString("source") + ": " + obj.optString("status").replace('_', ' '))
             }
         }
-        val fetchedAt = json.optString("fetched_at_utc")
+        val fetchedAt = analysis.optString("fetched_at_utc")
         val sourceSummary = sourceStatuses.joinToString(" • ") +
             if (fetchedAt.isNotBlank()) "\nFetched: " + fetchedAt + " UTC" else ""
-
-        val score = json.optInt("evidence_score")
-        val confidence = json.optString("confidence", "low")
-        val analysisSummary = "Evidence score: " + score + "/100 · Confidence: " + confidence + "\n" +
-            json.optString("score_meaning", "Evidence coverage only; not a demand forecast.")
+        val analysisSummary = "Evidence score: " + analysis.optInt("evidence_score") + "/100 · Confidence: " +
+            analysis.optString("confidence", "low") + "\n" +
+            analysis.optString("score_meaning", "Evidence coverage only; not a demand forecast.")
         val priceObject = snapshot.optJSONObject("price_summary")
         val priceSummary = if (priceObject != null) {
             "Low ₹" + priceObject.optDouble("min") + ", median ₹" + priceObject.optDouble("median") +
-                ", high ₹" + priceObject.optDouble("max") + ". Readable price coverage: " +
-                priceObject.optDouble("coverage_pct") + "% (" + priceObject.optInt("priced_listing_count") +
-                "/" + priceObject.optInt("listing_count") + " listings)."
-        } else {
-            "No reliable public prices were extracted for this search."
-        }
-        val economics = json.optJSONObject("unit_economics")
-        val profitSummary = if (economics == null) {
-            ""
-        } else if (economics.optString("status") == "needs_selling_price") {
+                ", high ₹" + priceObject.optDouble("max") + ". Price coverage: " +
+                priceObject.optDouble("coverage_pct") + "%."
+        } else "No reliable public prices were extracted; verify listings manually."
+
+        val economics = analysis.optJSONObject("unit_economics")
+        val profitSummary = if (economics == null) "" else if (economics.optString("status") == "needs_selling_price") {
             economics.optString("note")
         } else {
             "Estimated profit/order: ₹" + economics.optDouble("estimated_net_profit_per_order") +
-                " · Estimated margin: " + economics.optDouble("estimated_net_margin_pct") +
-                "% · Break-even selling price: ₹" + economics.optDouble("break_even_selling_price") + ". " +
-                economics.optString("note")
+                " · Margin: " + economics.optDouble("estimated_net_margin_pct") +
+                "% · Break-even selling price: ₹" + economics.optDouble("break_even_selling_price") +
+                ". " + economics.optString("note")
         }
-        return LiveResponse(found, recommendations, sourceSummary, analysisSummary, priceSummary, profitSummary)
+
+        val competition = json.optJSONObject("competition") ?: JSONObject()
+        val competitionSummary = competition.optString("level", "Not enough evidence") + "\n" +
+            competition.optString("note", "Competition could not be assessed.") + "\n" +
+            "Accessible listings: " + competition.optInt("listing_count_signal") +
+            " · Sources with results: " + competition.optInt("sources_with_results")
+
+        val plan = json.optJSONObject("business_plan") ?: JSONObject()
+        val scenario = plan.optJSONObject("scenario")
+        val allocation = plan.optJSONArray("recommended_test_budget_allocation")
+        val allocationLines = mutableListOf<String>()
+        if (allocation != null) {
+            for (index in 0 until allocation.length()) {
+                val obj = allocation.optJSONObject(index) ?: continue
+                allocationLines.add(obj.optString("category") + ": ₹" + obj.optDouble("amount_inr") + " (" + obj.optInt("pct") + "%)")
+            }
+        }
+        val businessPlanSummary = buildString {
+            append("Starting budget: ₹").append(plan.optDouble("startup_budget_inr"))
+            append("\nIllustrative test-budget allocation:\n").append(allocationLines.joinToString("\n"))
+            if (scenario != null) {
+                append("\n\nEstimated monthly result after fixed costs: ₹")
+                    .append(scenario.optDouble("estimated_monthly_result_after_fixed_costs_inr"))
+                append("\nTarget orders: ").append(scenario.optInt("target_monthly_orders"))
+                val breakEvenOrders = scenario.opt("break_even_orders_per_month")
+                if (breakEvenOrders != null && breakEvenOrders != JSONObject.NULL) {
+                    append("\nBreak-even orders/month: ").append(breakEvenOrders.toString())
+                }
+            }
+            append("\n\n").append(plan.optString("note"))
+        }
+
+        val supplierLinks = mutableListOf<SupplierLink>()
+        val supplierDiscovery = json.optJSONObject("supplier_discovery") ?: JSONObject()
+        val links = supplierDiscovery.optJSONArray("links")
+        if (links != null) {
+            for (index in 0 until links.length()) {
+                val obj = links.optJSONObject(index) ?: continue
+                supplierLinks.add(SupplierLink(obj.optString("name"), obj.optString("type"), obj.optString("url")))
+            }
+        }
+        return LiveResponse(found, recommendations, sourceSummary, analysisSummary, priceSummary, profitSummary, competitionSummary, businessPlanSummary, supplierLinks)
     } finally {
         connection.disconnect()
     }
