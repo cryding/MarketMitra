@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import re
 import socket
 import urllib.error
 import urllib.parse
@@ -142,4 +143,168 @@ def scrape_public_page(request: ScrapeRequest) -> dict[str, Any]:
         "price_candidates": prices,
         "same_host_links": links,
         "extraction_note": "Page metadata only; verify all extracted fields against the source. This is not a guaranteed product parser.",
+    }
+
+
+# Marketplace adapters are best-effort. Each live source is fetched only when its
+# robots.txt permits this bot; blocked/unreachable sources are reported, not faked.
+MARKETPLACE_SEARCHES = {
+    "Meesho": lambda q: "https://www.meesho.com/search?q=" + urllib.parse.quote_plus(q),
+    "Flipkart": lambda q: "https://www.flipkart.com/search?q=" + urllib.parse.quote_plus(q),
+    "Amazon India": lambda q: "https://www.amazon.in/s?k=" + urllib.parse.quote_plus(q),
+}
+
+_PRICE_RE = re.compile(r"(?:₹|Rs\\.?\\s*)([0-9][0-9,]*(?:\\.[0-9]{1,2})?)", re.IGNORECASE)
+
+
+def _jsonld_products(soup: BeautifulSoup, source_name: str, source_url: str) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
+
+    def visit(node: Any) -> None:
+        if isinstance(node, list):
+            for child in node:
+                visit(child)
+            return
+        if not isinstance(node, dict):
+            return
+        node_type = node.get("@type", "")
+        types = node_type if isinstance(node_type, list) else [node_type]
+        if any(str(t).casefold() == "product" for t in types):
+            name = str(node.get("name", "")).strip()
+            offers = node.get("offers", {})
+            if isinstance(offers, list):
+                offers = offers[0] if offers else {}
+            price = ""
+            if isinstance(offers, dict) and offers.get("price") is not None:
+                currency = str(offers.get("priceCurrency", "INR"))
+                symbol = "₹" if currency == "INR" else currency + " "
+                price = symbol + str(offers.get("price"))
+            product_url = urllib.parse.urljoin(source_url, str(node.get("url", source_url)))
+            if name:
+                found.append({"name": name[:180], "price": price, "url": product_url, "source": source_name})
+        for value in node.values():
+            if isinstance(value, (dict, list)):
+                visit(value)
+
+    for tag in soup.find_all("script", attrs={"type": "application/ld+json"})[:30]:
+        raw = tag.string or tag.get_text()
+        if not raw:
+            continue
+        try:
+            visit(json.loads(raw))
+        except (json.JSONDecodeError, TypeError):
+            continue
+    return found
+
+
+def _fetch_marketplace_search(source_name: str, url: str) -> dict[str, Any]:
+    parsed = _validate_public_target(url)
+    user_agent = "MarketMitraResearchBot/0.1 (+https://github.com/cryding/MarketMitra)"
+    if not _robots_allows(url, user_agent):
+        return {"source": source_name, "status": "blocked_by_robots_or_policy_unavailable", "items": []}
+
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": user_agent, "Accept": "text/html,application/xhtml+xml"},
+    )
+    opener = urllib.request.build_opener(_NoRedirect)
+    try:
+        with opener.open(request, timeout=8) as response:
+            content_type = response.headers.get("Content-Type", "").lower()
+            if "text/html" not in content_type and "application/xhtml+xml" not in content_type:
+                return {"source": source_name, "status": "not_html", "items": []}
+            raw = response.read(1_000_001)
+            if len(raw) > 1_000_000:
+                return {"source": source_name, "status": "page_too_large", "items": []}
+            html = raw.decode(response.headers.get_content_charset() or "utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        state = "redirect_not_followed" if 300 <= exc.code < 400 else f"http_{exc.code}"
+        return {"source": source_name, "status": state, "items": []}
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return {"source": source_name, "status": "fetch_failed", "items": []}
+
+    soup = BeautifulSoup(html, "html.parser")
+    items = _jsonld_products(soup, source_name, url)
+    if not items:
+        # Generic fallback for public result cards; source pages may change their markup.
+        for anchor in soup.find_all("a", href=True):
+            name = anchor.get_text(" ", strip=True)
+            if len(name) < 12 or len(name) > 180:
+                continue
+            href = urllib.parse.urljoin(url, str(anchor["href"]))
+            target = urllib.parse.urlparse(href)
+            if target.scheme not in {"http", "https"} or target.hostname != parsed.hostname:
+                continue
+            parent_text = anchor.parent.get_text(" ", strip=True)[:700] if anchor.parent else name
+            price_match = _PRICE_RE.search(parent_text)
+            price = ("₹" + price_match.group(1)) if price_match else ""
+            if any(existing["url"] == href for existing in items):
+                continue
+            items.append({"name": name, "price": price, "url": href, "source": source_name})
+            if len(items) >= 20:
+                break
+    # De-duplicate repeated structured data, keep the first source occurrence.
+    unique: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in items:
+        key = (item["name"].casefold(), item["url"])
+        if key not in seen:
+            seen.add(key)
+            unique.append(item)
+    return {"source": source_name, "status": "ok", "items": unique[:20]}
+
+
+def _suggest_opportunities(query: str, items: list[dict[str, Any]]) -> list[dict[str, str]]:
+    if not items:
+        return []
+    with_price = sum(1 for item in items if item.get("price"))
+    sources = sorted({item.get("source", "") for item in items if item.get("source")})
+    signals = []
+    if len(sources) > 1:
+        signals.append("Products found across multiple marketplaces; compare seller, shipping and reviews.")
+    if with_price:
+        signals.append(f"{with_price} of {len(items)} extracted results included a price; verify prices on the source page.")
+    if len(items) >= 5:
+        signals.append("Several public results were discoverable for this query; validate demand with independent trend data.")
+    if not signals:
+        signals.append("Public results were found, but price fields were not reliably available.")
+    return [{"title": f"Research opportunity: {query}", "reason": signal, "confidence": "early_signal"} for signal in signals]
+
+
+@app.get("/api/v1/research/live")
+def research_live(q: str = Field(default="", max_length=100)) -> dict[str, Any]:
+    """Search public marketplace pages live, where robots.txt and access policy permit."""
+    query = q.strip()
+    if len(query) < 2:
+        raise HTTPException(status_code=422, detail="Enter at least two characters to research a product.")
+    results: list[dict[str, Any]] = []
+    source_status: list[dict[str, str]] = []
+    for source_name, build_url in MARKETPLACE_SEARCHES.items():
+        status = _fetch_marketplace_search(source_name, build_url(query))
+        source_status.append({"source": status["source"], "status": status["status"]})
+        results.extend(status["items"])
+    # Prefer results that contain query terms and have explicit prices.
+    query_terms = [term.casefold() for term in query.split() if len(term) > 1]
+    for item in results:
+        name = item.get("name", "").casefold()
+        item["relevance"] = sum(1 for term in query_terms if term in name)
+        item["has_price"] = bool(item.get("price"))
+    results.sort(key=lambda item: (item["relevance"], item["has_price"]), reverse=True)
+    unique_results: list[dict[str, Any]] = []
+    seen_names: set[str] = set()
+    for item in results:
+        key = re.sub(r"\\W+", " ", item["name"].casefold()).strip()
+        if key and key not in seen_names:
+            seen_names.add(key)
+            unique_results.append(item)
+    return {
+        "mode": "live_public_scrape",
+        "live_data": True,
+        "query": query,
+        "fetched_at_utc": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+        "count": len(unique_results),
+        "items": unique_results[:40],
+        "suggestions": _suggest_opportunities(query, unique_results[:40]),
+        "sources": source_status,
+        "note": "Live results depend on each marketplace's robots.txt, access rules, page markup and network availability. Missing results do not mean no demand. Verify prices, stock and seller claims on the source page.",
     }
