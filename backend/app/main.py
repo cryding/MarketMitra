@@ -20,6 +20,21 @@ app = FastAPI(
     version="0.1.0",
 )
 
+
+@app.middleware("http")
+async def normalize_vercel_rewrite_path(request, call_next):
+    """Strip the serverless-function prefix if Vercel forwards it to ASGI."""
+    path = request.scope.get("path", "/")
+    prefix = "/api/index"
+    if path == prefix:
+        request.scope["path"] = "/"
+        request.scope["raw_path"] = b"/"
+    elif path.startswith(prefix + "/"):
+        normalized = path[len(prefix):]
+        request.scope["path"] = normalized
+        request.scope["raw_path"] = normalized.encode("utf-8")
+    return await call_next(request)
+
 SAMPLE_PRODUCTS: list[dict[str, Any]] = [
     {"name": "Everyday cotton kurti", "category": "Women fashion", "market": "India", "price_band_inr": "₹299–₹699", "signals": ["lightweight shipping", "many style variants"], "source_type": "sample", "opportunity_score": 72},
     {"name": "Reusable kitchen storage set", "category": "Home & kitchen", "market": "India", "price_band_inr": "₹199–₹499", "signals": ["bundle potential", "repeat-use household item"], "source_type": "sample", "opportunity_score": 68},
