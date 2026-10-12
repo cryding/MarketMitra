@@ -14,6 +14,8 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+        val researchApiUrl = providers.gradleProperty("MARKETMITRA_API_BASE_URL").orNull ?: ""
+        buildConfigField("String", "API_BASE_URL", "\"$researchApiUrl\"")
     }
 
     buildTypes {
@@ -28,10 +30,6 @@ android {
         buildConfig = true
     }
 
-    val researchApiUrl = providers.gradleProperty("MARKETMITRA_API_BASE_URL").orNull ?: ""
-    defaultConfig {
-        buildConfigField("String", "API_BASE_URL", "\"$researchApiUrl\"")
-    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
