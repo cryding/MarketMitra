@@ -77,3 +77,51 @@ def test_live_research_reports_source_status_and_suggestions(monkeypatch):
     assert body["items"][0]["price"] == "₹399"
     assert body["sources"][0]["status"] == "ok"
     assert body["suggestions"]
+
+
+def test_market_analysis_returns_transparent_evidence_and_unit_economics(monkeypatch):
+    from app import main
+
+    def fake_research_live(q):
+        return {
+            "mode": "live_public_scrape",
+            "live_data": True,
+            "query": q,
+            "fetched_at_utc": "2026-10-12T00:00:00+00:00",
+            "count": 3,
+            "items": [
+                {"name": "Cotton Kurti A", "price": "₹400", "url": "https://example.com/a", "source": "Meesho"},
+                {"name": "Cotton Kurti B", "price": "₹500", "url": "https://example.com/b", "source": "Flipkart"},
+                {"name": "Cotton Kurti C", "price": "₹600", "url": "https://example.com/c", "source": "Amazon India"},
+            ],
+            "sources": [
+                {"source": "Meesho", "status": "ok"},
+                {"source": "Flipkart", "status": "ok"},
+                {"source": "Amazon India", "status": "ok"},
+            ],
+        }
+
+    monkeypatch.setattr(main, "research_live", fake_research_live)
+    response = client.post("/api/v1/research/analyze", json={
+        "q": "cotton kurti",
+        "unit_cost_inr": 200,
+        "selling_price_inr": 500,
+        "packaging_cost_inr": 20,
+        "shipping_cost_inr": 40,
+        "marketplace_fee_pct": 10,
+        "return_loss_pct": 5,
+        "ads_cost_per_order_inr": 25,
+    })
+    assert response.status_code == 200
+    body = response.json()
+    assert body["evidence_score"] >= 0
+    assert body["market_snapshot"]["price_summary"]["median"] == 500
+    assert body["unit_economics"]["estimated_net_profit_per_order"] == 140
+    assert body["unit_economics"]["break_even_selling_price"] == 335.29
+    assert body["score_meaning"].startswith("Evidence coverage score")
+    assert body["recommendations"]
+
+
+def test_market_analysis_rejects_too_short_query():
+    response = client.post("/api/v1/research/analyze", json={"q": "x"})
+    assert response.status_code == 422
