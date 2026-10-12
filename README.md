@@ -81,3 +81,25 @@ MIT. See [LICENSE](LICENSE).
 ## CI troubleshooting
 
 The repository workflow runs backend tests with `PYTHONPATH=.` and builds the Android debug APK using the Android SDK on GitHub-hosted runners. Check the [Actions tab](https://github.com/cryding/MarketMitra/actions) for the latest run and artifact; an earlier failed run is not evidence of a successful current build.
+
+
+## Advanced research and business analysis
+
+- \`POST /api/v1/research/analyze\` combines the live public research results with source coverage, observed price range/median, an evidence-coverage score, next-step recommendations, and optional per-order unit economics.
+- Example request:
+
+\`\`\`json
+{
+  "q": "cotton kurti",
+  "unit_cost_inr": 180,
+  "selling_price_inr": 499,
+  "packaging_cost_inr": 15,
+  "shipping_cost_inr": 45,
+  "marketplace_fee_pct": 12,
+  "return_loss_pct": 5,
+  "ads_cost_per_order_inr": 20
+}
+\`\`\`
+
+- The endpoint is deterministic and uses no paid AI API. The evidence score measures how complete the collected research is; it is not a demand forecast or a guarantee of profit.
+- Leave \`unit_cost_inr\` out to omit profit calculations. If you provide unit cost but omit selling price, the observed marketplace median can be used as a clearly labelled scenario.
