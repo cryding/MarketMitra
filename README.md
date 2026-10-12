@@ -76,3 +76,8 @@ The backend can be deployed to any compatible Python host with a free tier, but 
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+
+## CI troubleshooting
+
+The repository workflow runs backend tests with `PYTHONPATH=.` and builds the Android debug APK using the Android SDK on GitHub-hosted runners. Check the [Actions tab](https://github.com/cryding/MarketMitra/actions) for the latest run and artifact; an earlier failed run is not evidence of a successful current build.
