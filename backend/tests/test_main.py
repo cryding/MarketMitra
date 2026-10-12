@@ -46,3 +46,34 @@ def test_credentialed_url_is_rejected():
         assert "credentials" in exc.detail.lower()
     else:
         raise AssertionError("Credentialed URL must be blocked")
+
+
+
+def test_live_research_requires_query():
+    response = client.get("/api/v1/research/live", params={"q": " "})
+    assert response.status_code == 422
+
+
+def test_live_research_reports_source_status_and_suggestions(monkeypatch):
+    from app import main
+
+    def fake_source(source_name, url):
+        if source_name == "Meesho":
+            return {
+                "source": source_name,
+                "status": "ok",
+                "items": [
+                    {"name": "Cotton Kurti", "price": "₹399", "url": "https://www.meesho.com/p/1", "source": source_name}
+                ],
+            }
+        return {"source": source_name, "status": "blocked_by_robots_or_policy_unavailable", "items": []}
+
+    monkeypatch.setattr(main, "_fetch_marketplace_search", fake_source)
+    response = client.get("/api/v1/research/live", params={"q": "cotton kurti"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["live_data"] is True
+    assert body["count"] == 1
+    assert body["items"][0]["price"] == "₹399"
+    assert body["sources"][0]["status"] == "ok"
+    assert body["suggestions"]
