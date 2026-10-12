@@ -103,3 +103,31 @@ The repository workflow runs backend tests with `PYTHONPATH=.` and builds the An
 
 - The endpoint is deterministic and uses no paid AI API. The evidence score measures how complete the collected research is; it is not a demand forecast or a guarantee of profit.
 - Leave \`unit_cost_inr\` out to omit profit calculations. If you provide unit cost but omit selling price, the observed marketplace median can be used as a clearly labelled scenario.
+
+
+## Empire business workspace
+
+- \`POST /api/v1/empire/workspace\` combines the live research endpoint, evidence score, observed listing-price comparison, competition activity signal, supplier-directory search links, supplier due-diligence checklist, budget allocation and an optional monthly unit-economics scenario.
+- It does not invent supplier records: supplier links open third-party search pages and require independent verification.
+- Example request:
+
+\`\`\`json
+{
+  "q": "cotton kurti",
+  "unit_cost_inr": 200,
+  "selling_price_inr": 499,
+  "packaging_cost_inr": 15,
+  "shipping_cost_inr": 45,
+  "marketplace_fee_pct": 12,
+  "return_loss_pct": 5,
+  "ads_cost_per_order_inr": 20,
+  "startup_budget_inr": 5000,
+  "monthly_fixed_costs_inr": 1000,
+  "target_monthly_orders": 30,
+  "location": "Itahar, West Bengal",
+  "sourcing_type": "wholesale"
+}
+\`\`\`
+
+- Competition is a listing-activity signal, not verified seller counts or proof of demand. Financial outputs are scenarios, not guarantees.
+- The app and backend are intended to run with free/open-source code; hosting free-tier limits and marketplace access can change.
