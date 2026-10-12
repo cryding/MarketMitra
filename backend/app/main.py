@@ -323,3 +323,177 @@ def research_live(q: str = Query(default="", max_length=100)) -> dict[str, Any]:
         "sources": source_status,
         "note": "Live results depend on each marketplace's robots.txt, access rules, page markup and network availability. Missing results do not mean no demand. Verify prices, stock and seller claims on the source page.",
     }
+
+
+class MarketAnalysisRequest(BaseModel):
+    """Inputs for transparent unit economics; no account or API key is required."""
+    q: str = Field(min_length=2, max_length=100)
+    unit_cost_inr: float | None = Field(default=None, ge=0, le=10_000_000)
+    selling_price_inr: float | None = Field(default=None, gt=0, le=10_000_000)
+    packaging_cost_inr: float = Field(default=0, ge=0, le=1_000_000)
+    shipping_cost_inr: float = Field(default=0, ge=0, le=1_000_000)
+    marketplace_fee_pct: float = Field(default=0, ge=0, le=100)
+    return_loss_pct: float = Field(default=0, ge=0, le=100)
+    ads_cost_per_order_inr: float = Field(default=0, ge=0, le=1_000_000)
+
+
+def _price_value(raw: str) -> float | None:
+    """Parse a conservative numeric price from a visible INR price string."""
+    if not raw:
+        return None
+    match = re.search(r"(?:₹|Rs\.?\s*)([0-9][0-9,]*(?:\.[0-9]{1,2})?)", raw, re.IGNORECASE)
+    if not match:
+        return None
+    try:
+        value = float(match.group(1).replace(",", ""))
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def _money(value: float) -> float:
+    return round(value, 2)
+
+
+@app.post("/api/v1/research/analyze")
+def analyze_market(request: MarketAnalysisRequest) -> dict[str, Any]:
+    """Combine live public research with explainable coverage scoring and optional unit economics."""
+    query = request.q.strip()
+    if len(query) < 2:
+        raise HTTPException(status_code=422, detail="Enter at least two characters to analyze a market.")
+
+    research = research_live(q=query)
+    items = research.get("items", [])
+    sources = research.get("sources", [])
+    prices = sorted(value for item in items if (value := _price_value(str(item.get("price", "")))) is not None)
+    source_count = sum(1 for source in sources if source.get("status") == "ok")
+    item_count = len(items)
+    priced_count = len(prices)
+    price_coverage = priced_count / item_count if item_count else 0.0
+
+    # This score measures evidence quality only. It is deliberately not a demand or profit prediction.
+    listing_component = min(item_count / 20, 1.0) * 35
+    source_component = min(source_count / 3, 1.0) * 30
+    price_component = price_coverage * 25
+    spread_component = 10 if len(prices) >= 3 else 0
+    evidence_score = round(listing_component + source_component + price_component + spread_component)
+    confidence = "low"
+    if evidence_score >= 70 and source_count >= 2 and priced_count >= 3:
+        confidence = "medium"
+    if evidence_score >= 85 and source_count >= 3 and priced_count >= 8:
+        confidence = "higher, but still not proof of demand"
+
+    price_summary: dict[str, Any] | None = None
+    if prices:
+        middle = len(prices) // 2
+        median_price = prices[middle] if len(prices) % 2 else (prices[middle - 1] + prices[middle]) / 2
+        price_summary = {
+            "currency": "INR",
+            "min": _money(prices[0]),
+            "median": _money(median_price),
+            "max": _money(prices[-1]),
+            "priced_listing_count": priced_count,
+            "listing_count": item_count,
+            "coverage_pct": round(price_coverage * 100, 1),
+            "note": "Observed public listing prices only; shipping, variants, discounts, stock and authenticity may differ."
+        }
+
+    recommendations: list[dict[str, str]] = []
+    if item_count == 0:
+        recommendations.append({
+            "priority": "high",
+            "action": "Do not conclude that demand is absent. Retry with simpler product keywords and collect permitted results from other sources.",
+            "why": "No usable listings were extracted; access restrictions or page changes can cause this."
+        })
+    else:
+        if source_count < 2:
+            recommendations.append({
+                "priority": "high",
+                "action": "Validate the same product on at least two independent sources before committing money.",
+                "why": "Current source coverage is limited."
+            })
+        if priced_count < 3:
+            recommendations.append({
+                "priority": "high",
+                "action": "Manually verify at least three comparable listings, including shipping and variant details.",
+                "why": "There are too few machine-readable prices for a reliable comparison."
+            })
+        else:
+            recommendations.append({
+                "priority": "high",
+                "action": "Compare like-for-like products by material, size, quality, shipping and return terms; do not choose by headline price alone.",
+                "why": "Listing prices are not necessarily comparable landed costs."
+            })
+        recommendations.append({
+            "priority": "medium",
+            "action": "Validate demand using independent trend signals, customer questions, review patterns and a small test batch before scaling.",
+            "why": "Marketplace listing counts and prices alone cannot prove sales volume or demand."
+        })
+
+    unit_economics: dict[str, Any] | None = None
+    if request.unit_cost_inr is not None:
+        scenario_price = request.selling_price_inr
+        price_basis = "user_supplied"
+        if scenario_price is None and price_summary is not None:
+            scenario_price = float(price_summary["median"])
+            price_basis = "observed_market_median_scenario"
+        if scenario_price is not None:
+            percentage_cost = (request.marketplace_fee_pct + request.return_loss_pct) / 100
+            fixed_cost = (
+                request.unit_cost_inr
+                + request.packaging_cost_inr
+                + request.shipping_cost_inr
+                + request.ads_cost_per_order_inr
+            )
+            contribution = scenario_price * (1 - percentage_cost)
+            net_profit = contribution - fixed_cost
+            margin_pct = (net_profit / scenario_price * 100) if scenario_price else None
+            break_even = fixed_cost / (1 - percentage_cost) if percentage_cost < 1 else None
+            unit_economics = {
+                "currency": "INR",
+                "scenario_selling_price": _money(scenario_price),
+                "price_basis": price_basis,
+                "fixed_per_order_costs": _money(fixed_cost),
+                "percentage_cost_pct": _money(percentage_cost * 100),
+                "estimated_net_profit_per_order": _money(net_profit),
+                "estimated_net_margin_pct": _money(margin_pct) if margin_pct is not None else None,
+                "break_even_selling_price": _money(break_even) if break_even is not None else None,
+                "status": "positive_estimate" if net_profit > 0 else "loss_or_no_margin",
+                "note": "Scenario estimate only. Include all taxes, fees, returns, discounts and overhead before making a decision."
+            }
+            if net_profit <= 0:
+                recommendations.insert(0, {
+                    "priority": "high",
+                    "action": "Do not scale this price/cost combination; revise sourcing, costs or pricing and recalculate.",
+                    "why": "The current unit-economics scenario has no positive estimated contribution."
+                })
+        else:
+            unit_economics = {
+                "status": "needs_selling_price",
+                "note": "Provide a selling_price_inr or collect comparable public prices to calculate a scenario."
+            }
+
+    return {
+        "mode": "live_research_analysis",
+        "live_data": bool(research.get("live_data")),
+        "query": query,
+        "evidence_score": evidence_score,
+        "score_meaning": "Evidence coverage score, not demand, guaranteed profit or a promise of success.",
+        "confidence": confidence,
+        "market_snapshot": {
+            "listing_count": item_count,
+            "sources_attempted": len(sources),
+            "sources_with_results": source_count,
+            "source_status": sources,
+            "price_summary": price_summary,
+        },
+        "unit_economics": unit_economics,
+        "recommendations": recommendations,
+        "items": items[:40],
+        "limitations": [
+            "A listing is not proof that a product sells.",
+            "Some marketplaces may block automated access or expose incomplete prices.",
+            "Validate demand and supplier quality independently before investing."
+        ],
+        "fetched_at_utc": research.get("fetched_at_utc"),
+    }
