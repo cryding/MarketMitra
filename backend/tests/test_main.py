@@ -125,3 +125,62 @@ def test_market_analysis_returns_transparent_evidence_and_unit_economics(monkeyp
 def test_market_analysis_rejects_too_short_query():
     response = client.post("/api/v1/research/analyze", json={"q": "x"})
     assert response.status_code == 422
+
+
+def test_empire_workspace_combines_analysis_competition_supplier_and_budget(monkeypatch):
+    from app import main
+
+    def fake_research_live(q):
+        return {
+            "mode": "live_public_scrape",
+            "live_data": True,
+            "query": q,
+            "fetched_at_utc": "2026-10-12T00:00:00+00:00",
+            "count": 3,
+            "items": [
+                {"name": "Kurti A", "price": "₹400", "url": "https://example.com/a", "source": "Meesho"},
+                {"name": "Kurti B", "price": "₹500", "url": "https://example.com/b", "source": "Flipkart"},
+                {"name": "Kurti C", "price": "₹600", "url": "https://example.com/c", "source": "Amazon India"},
+            ],
+            "sources": [
+                {"source": "Meesho", "status": "ok"},
+                {"source": "Flipkart", "status": "ok"},
+                {"source": "Amazon India", "status": "ok"},
+            ],
+            "suggestions": [],
+        }
+
+    monkeypatch.setattr(main, "research_live", fake_research_live)
+    response = client.post("/api/v1/empire/workspace", json={
+        "q": "cotton kurti",
+        "unit_cost_inr": 200,
+        "selling_price_inr": 500,
+        "packaging_cost_inr": 20,
+        "shipping_cost_inr": 40,
+        "marketplace_fee_pct": 10,
+        "return_loss_pct": 5,
+        "ads_cost_per_order_inr": 25,
+        "startup_budget_inr": 5000,
+        "monthly_fixed_costs_inr": 1000,
+        "target_monthly_orders": 30,
+        "location": "Itahar, West Bengal",
+        "sourcing_type": "wholesale",
+    })
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mode"] == "empire_business_workspace"
+    assert body["market_analysis"]["market_snapshot"]["price_summary"]["median"] == 500
+    assert body["competition"]["level"] == "insufficient_competition_evidence"
+    assert len(body["supplier_discovery"]["links"]) >= 3
+    assert sum(x["pct"] for x in body["business_plan"]["recommended_test_budget_allocation"]) == 100
+    assert body["business_plan"]["scenario"]["estimated_monthly_result_after_fixed_costs_inr"] == 3200
+    assert len(body["next_actions"]) >= 4
+
+
+def test_supplier_links_are_search_links_not_claimed_verified_vendors():
+    from app.main import _supplier_search_links
+
+    links = _supplier_search_links("cotton kurti", "Itahar, West Bengal", "wholesale")
+    assert len(links) >= 3
+    assert all(link["url"].startswith("https://") for link in links)
+    assert all("supplier" in link["type"].lower() or "sourcing" in link["type"].lower() for link in links)
