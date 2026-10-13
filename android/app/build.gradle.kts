@@ -12,8 +12,8 @@ android {
         applicationId = "com.marketmitra.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.5.0"
         val researchApiUrl = providers.gradleProperty("MARKETMITRA_API_BASE_URL").orNull ?: "https://marketmitra-api.vercel.app"
         require(researchApiUrl.startsWith("https://")) { "MARKETMITRA_API_BASE_URL must use HTTPS" }
         buildConfigField("String", "API_BASE_URL", "\"$researchApiUrl\"")
