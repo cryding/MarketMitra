@@ -244,10 +244,11 @@ def test_research_signals_use_independent_feeds_and_label_evidence_not_demand(mo
     from app import main
 
     def fake_feed(name, url, query, max_items=12):
-        kind = "news_mention" if "Google News" in name else "search_trend"
+        kind = "news_mention" if "Google News" in name else "customer_discussion" if "Reddit" in name else "search_trend"
+        domain = "news" if kind == "news_mention" else "reddit" if kind == "customer_discussion" else "trends"
         return {"source": name, "status": "ok", "count": 1, "items": [{
             "title": "Cotton kurti retail trends",
-            "url": "https://news.example/story" if kind == "news_mention" else "https://trends.example/story",
+            "url": "https://" + domain + ".example/story",
             "summary": "Retail update",
             "published_at": "",
             "source": name,
@@ -260,8 +261,8 @@ def test_research_signals_use_independent_feeds_and_label_evidence_not_demand(mo
     assert response.status_code == 200
     body = response.json()
     assert body["method"] == "Cross-Source Evidence Lens"
-    assert body["source_summary"]["with_matching_items"] == 2
-    assert len(body["items"]) == 2
+    assert body["source_summary"]["with_matching_items"] == 3
+    assert len(body["items"]) == 3
     assert "not demand" in body["score_meaning"].lower()
     assert any("not proof of orders or sales" in item["why"] for item in body["recommendations"])
 
