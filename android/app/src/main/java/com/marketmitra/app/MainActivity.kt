@@ -4,8 +4,6 @@ import android.os.Bundle
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.Brush
@@ -137,90 +135,6 @@ private fun MarketMitraScreen() {
     var operationAmount by remember { mutableStateOf("") }
     var operationNote by remember { mutableStateOf("") }
     var operationRecords by remember { mutableStateOf(loadOperationRecords(context)) }
-    val apiAnythingReportPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            runCatching {
-                val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                    ?: throw IllegalStateException("Could not read the selected JSON report.")
-                val root = JSONObject(raw)
-                val imported = mutableListOf<ResearchItem>()
-                val importedItems = root.optJSONArray("items")
-                if (importedItems != null) {
-                    for (index in 0 until importedItems.length()) {
-                        val obj = importedItems.optJSONObject(index) ?: continue
-                        val title = obj.optString("title").takeIf { it.isNotBlank() } ?: continue
-                        val metadata = obj.optJSONObject("metadata") ?: JSONObject()
-                        val rawPrice = obj.optString("price").takeIf { it.isNotBlank() }
-                        val currency = obj.optString("currency", "UNKNOWN")
-                        val priceText = rawPrice?.let { if (currency == "UNKNOWN") it else "$it ($currency)" }
-                            ?: metadata.optString("views").takeIf { it.isNotBlank() }
-                            ?: (obj.optString("kind", "research") + " signal — no product price")
-                        imported.add(ResearchItem(
-                            name = title,
-                            price = priceText,
-                            source = obj.optString("source", "API Anything"),
-                            url = obj.optString("url"),
-                            relevance = 1
-                        ))
-                    }
-                }
-                val aggregate = root.optJSONObject("aggregate") ?: JSONObject()
-                val sourceSummaryObject = aggregate.optJSONObject("source_summary") ?: JSONObject()
-                val sourceArray = root.optJSONArray("sources")
-                val sourceLines = mutableListOf<String>()
-                if (sourceArray != null) {
-                    for (index in 0 until sourceArray.length()) {
-                        val obj = sourceArray.optJSONObject(index) ?: continue
-                        sourceLines.add(obj.optString("name") + ": " + obj.optString("status") + " (" + obj.optInt("count") + ")")
-                    }
-                }
-                val priceSummaries = aggregate.optJSONObject("price_summaries_by_currency") ?: JSONObject()
-                val priceLines = mutableListOf<String>()
-                val priceKeys = priceSummaries.keys()
-                while (priceKeys.hasNext()) {
-                    val currency = priceKeys.next()
-                    val summary = priceSummaries.optJSONObject(currency) ?: continue
-                    priceLines.add("$currency min " + summary.optDouble("min") +
-                        " · median " + summary.optDouble("median") + " · max " + summary.optDouble("max") +
-                        " (" + summary.optInt("count") + " records)")
-                }
-                query = root.optString("query", query)
-                itemsFound = imported
-                sourceSummary = if (sourceLines.isEmpty()) {
-                    "API Anything sources with results: " + sourceSummaryObject.optInt("with_results") +
-                        " / " + sourceSummaryObject.optInt("attempted")
-                } else sourceLines.joinToString("\n")
-                analysisSummary = "API Anything report · " + imported.size + " findings · " +
-                    sourceSummaryObject.optInt("with_results") + " source(s) returned results. " +
-                    "This combines product listings and content signals; it is not a sales forecast."
-                priceSummary = if (priceLines.isEmpty()) "No reliable numeric prices in the imported report." else priceLines.joinToString("\n")
-                profitSummary = ""
-                competitionSummary = "Supplementary API Anything research. A source being available does not prove demand or sales."
-                businessPlanSummary = ""
-                supplierLinks = emptyList()
-                researchLinks = emptyList()
-                tips = mutableListOf<OpportunityTip>().also { target ->
-                    val recommendations = aggregate.optJSONArray("recommendations")
-                    if (recommendations != null) {
-                        for (index in 0 until recommendations.length()) {
-                            val obj = recommendations.optJSONObject(index) ?: continue
-                            target.add(OpportunityTip(obj.optString("action"), obj.optString("why")))
-                        }
-                    }
-                    if (target.isEmpty()) target.add(OpportunityTip(
-                        "Validate before investing",
-                        "Review source pages, verify prices and collect India-specific customer and supplier evidence. USD prices and video views are not proof of Indian demand."
-                    ))
-                }
-                hasSearched = true
-                message = "Imported " + imported.size + " API Anything finding(s). Verify source pages and currency before using the results."
-            }.onFailure { error ->
-                message = "Could not import report: " + (error.message ?: "invalid JSON file")
-            }
-        }
-    }
 
     Surface(modifier = Modifier.fillMaxSize(), color = Page) {
         LazyColumn(
@@ -262,7 +176,7 @@ private fun MarketMitraScreen() {
                     Column(Modifier.padding(16.dp)) {
                         Text("Find products worth researching", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
                         Spacer(Modifier.height(6.dp))
-                        Text("Search public marketplace listings and get research suggestions. Core research needs no paid API key; API Anything is an optional local connector.", color = Muted, lineHeight = 20.sp)
+                        Text("Phone-only research: enter a product name and MarketMitra checks accessible public marketplace pages, compares visible prices and suggests next steps. No terminal, extra files or API setup needed.", color = Muted, lineHeight = 20.sp)
                         Spacer(Modifier.height(14.dp))
                         OutlinedTextField(
                             value = query,
@@ -303,22 +217,6 @@ private fun MarketMitraScreen() {
                             OutlinedTextField(value = sourcingLocation, onValueChange = { sourcingLocation = it }, modifier = Modifier.weight(1f), singleLine = true, label = { Text("Supplier location") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text), shape = RoundedCornerShape(10.dp))
                         }
                         Spacer(Modifier.height(10.dp))
-                        OutlinedButton(
-                            onClick = { openSource(context, "https://github.com/goodnight000/api-anything") },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("API Anything setup guide ↗")
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        OutlinedButton(
-                            onClick = { apiAnythingReportPicker.launch(arrayOf("application/json", "text/json", "text/plain", "*/*")) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("Import API Anything research report (JSON)")
-                        }
-                        Spacer(Modifier.height(6.dp))
                         Button(
                             onClick = {
                                 scope.launch {
