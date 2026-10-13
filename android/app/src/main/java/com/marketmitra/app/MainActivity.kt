@@ -139,6 +139,7 @@ private fun MarketMitraScreen() {
     var operationQuantity by remember { mutableStateOf("1") }
     var operationAmount by remember { mutableStateOf("") }
     var operationNote by remember { mutableStateOf("") }
+    var operationLinkedProduct by remember { mutableStateOf("") }
     var operationRecords by remember { mutableStateOf(loadOperationRecords(context)) }
 
     Surface(modifier = Modifier.fillMaxSize(), color = Page) {
@@ -451,6 +452,12 @@ private fun MarketMitraScreen() {
                 val openOrders = operationRecords.count { it.type == "Order" && it.status == "Open" }
                 val completedRevenue = operationRecords.filter { it.type == "Order" && it.status == "Completed" }.sumOf { it.amountInr }
                 val recordedExpenses = operationRecords.filter { it.type == "Expense" }.sumOf { it.amountInr }
+                val completedCogs = operationRecords.filter { it.type == "Order" && it.status == "Completed" }.sumOf { order ->
+                    val product = operationRecords.firstOrNull { it.type == "Product" && it.title.equals(order.linkedProduct.trim(), ignoreCase = true) }
+                    (product?.amountInr ?: 0.0) * order.quantity
+                }
+                val estimatedResult = completedRevenue - recordedExpenses - completedCogs
+                val lowStockCount = operationRecords.count { it.type == "Product" && it.status == "Active" && it.quantity <= 3 }
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color.White),
                     shape = RoundedCornerShape(18.dp),
@@ -481,6 +488,19 @@ private fun MarketMitraScreen() {
                             Column(Modifier.weight(1f).background(Page, RoundedCornerShape(10.dp)).padding(10.dp)) {
                                 Text("RECORDED EXPENSES", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 Text("₹" + recordedExpenses.toInt().toString(), color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(Modifier.weight(1f).background(Page, RoundedCornerShape(10.dp)).padding(10.dp)) {
+                                Text("ESTIMATED RESULT", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("₹" + estimatedResult.toInt().toString(), color = if (estimatedResult >= 0) Green else Color(0xFFB42318), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Text("Sales − recorded expenses − linked product cost; excludes unrecorded fees/tax.", color = Muted, fontSize = 10.sp, lineHeight = 13.sp)
+                            }
+                            Column(Modifier.weight(1f).background(Page, RoundedCornerShape(10.dp)).padding(10.dp)) {
+                                Text("LOW STOCK", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text(lowStockCount.toString(), color = if (lowStockCount > 0) Color(0xFFB54708) else Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                Text("Active products with 3 units or fewer", color = Muted, fontSize = 10.sp)
                             }
                         }
                         Spacer(Modifier.height(14.dp))
@@ -534,6 +554,18 @@ private fun MarketMitraScreen() {
                                 shape = RoundedCornerShape(10.dp)
                             )
                         }
+                        if (operationType == "Order") {
+                            OutlinedTextField(
+                                value = operationLinkedProduct,
+                                onValueChange = { operationLinkedProduct = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                label = { Text("Link to exact Product name / SKU") },
+                                placeholder = { Text("Add the same name used in Product records") },
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            Text("Completing an order will deduct its quantity from this product stock. A matching product and sufficient stock are required.", color = Muted, fontSize = 11.sp, lineHeight = 15.sp)
+                        }
                         OutlinedTextField(
                             value = operationNote,
                             onValueChange = { operationNote = it },
@@ -565,7 +597,8 @@ private fun MarketMitraScreen() {
                                         quantity = quantity,
                                         amountInr = amount,
                                         status = status,
-                                        note = operationNote.trim()
+                                        note = operationNote.trim(),
+                                        linkedProduct = operationLinkedProduct.trim()
                                     )
                                     val updated = listOf(record) + operationRecords
                                     operationRecords = updated
@@ -574,6 +607,7 @@ private fun MarketMitraScreen() {
                                     operationQuantity = "1"
                                     operationAmount = ""
                                     operationNote = ""
+                                    operationLinkedProduct = ""
                                     message = "$operationType record saved on this device."
                                 }
                             },
@@ -595,14 +629,48 @@ private fun MarketMitraScreen() {
                                     if (record.type != "Expense") {
                                         OutlinedButton(
                                             onClick = {
-                                                val nextStatus = when (record.type) {
-                                                    "Order" -> if (record.status == "Open") "Completed" else "Open"
-                                                    "Task" -> if (record.status == "To do") "Done" else "To do"
-                                                    else -> if (record.status == "Active") "Archived" else "Active"
+                                                if (record.type == "Order") {
+                                                    val linkedProduct = operationRecords.firstOrNull {
+                                                        it.type == "Product" && it.title.equals(record.linkedProduct.trim(), ignoreCase = true)
+                                                    }
+                                                    if (record.status == "Open") {
+                                                        if (record.linkedProduct.isBlank() || linkedProduct == null) {
+                                                            message = "Order not completed: add a matching Product record and exact product name/SKU first."
+                                                        } else if (linkedProduct.quantity < record.quantity) {
+                                                            message = "Order not completed: insufficient stock for " + linkedProduct.title + ". Available " + linkedProduct.quantity + "."
+                                                        } else {
+                                                            val updated = operationRecords.map {
+                                                                when (it.id) {
+                                                                    record.id -> it.copy(status = "Completed")
+                                                                    linkedProduct.id -> it.copy(quantity = it.quantity - record.quantity)
+                                                                    else -> it
+                                                                }
+                                                            }
+                                                            operationRecords = updated
+                                                            saveOperationRecords(context, updated)
+                                                            message = "Order completed and stock deducted for " + linkedProduct.title + "."
+                                                        }
+                                                    } else {
+                                                        val updated = operationRecords.map {
+                                                            when (it.id) {
+                                                                record.id -> it.copy(status = "Open")
+                                                                linkedProduct?.id -> it.copy(quantity = it.quantity + record.quantity)
+                                                                else -> it
+                                                            }
+                                                        }
+                                                        operationRecords = updated
+                                                        saveOperationRecords(context, updated)
+                                                        message = "Order reopened; linked stock restored when a matching product exists."
+                                                    }
+                                                } else {
+                                                    val nextStatus = when (record.type) {
+                                                        "Task" -> if (record.status == "To do") "Done" else "To do"
+                                                        else -> if (record.status == "Active") "Archived" else "Active"
+                                                    }
+                                                    val updated = operationRecords.map { if (it.id == record.id) it.copy(status = nextStatus) else it }
+                                                    operationRecords = updated
+                                                    saveOperationRecords(context, updated)
                                                 }
-                                                val updated = operationRecords.map { if (it.id == record.id) it.copy(status = nextStatus) else it }
-                                                operationRecords = updated
-                                                saveOperationRecords(context, updated)
                                             },
                                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                             shape = RoundedCornerShape(8.dp)
@@ -687,7 +755,8 @@ private data class OperationRecord(
     val quantity: Double,
     val amountInr: Double,
     val status: String,
-    val note: String
+    val note: String,
+    val linkedProduct: String = ""
 )
 
 private fun loadOperationRecords(context: Context): List<OperationRecord> {
@@ -704,7 +773,8 @@ private fun loadOperationRecords(context: Context): List<OperationRecord> {
                 quantity = obj.optDouble("quantity", 1.0),
                 amountInr = obj.optDouble("amountInr", 0.0),
                 status = obj.optString("status", "Active"),
-                note = obj.optString("note")
+                note = obj.optString("note"),
+                linkedProduct = obj.optString("linkedProduct")
             ).takeIf { it.title.isNotBlank() }
         }
     }.getOrDefault(emptyList())
@@ -720,7 +790,8 @@ private fun saveOperationRecords(context: Context, records: List<OperationRecord
             .put("quantity", record.quantity)
             .put("amountInr", record.amountInr)
             .put("status", record.status)
-            .put("note", record.note))
+            .put("note", record.note)
+            .put("linkedProduct", record.linkedProduct))
     }
     context.getSharedPreferences("marketmitra_operations", Context.MODE_PRIVATE)
         .edit().putString("records_json", array.toString()).apply()
