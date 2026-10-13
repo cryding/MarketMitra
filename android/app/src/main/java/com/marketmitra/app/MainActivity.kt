@@ -34,6 +34,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
@@ -129,6 +130,12 @@ private fun MarketMitraScreen() {
     var hasSearched by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    var operationType by remember { mutableStateOf("Product") }
+    var operationTitle by remember { mutableStateOf("") }
+    var operationQuantity by remember { mutableStateOf("1") }
+    var operationAmount by remember { mutableStateOf("") }
+    var operationNote by remember { mutableStateOf("") }
+    var operationRecords by remember { mutableStateOf(loadOperationRecords(context)) }
     val apiAnythingReportPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -500,6 +507,182 @@ private fun MarketMitraScreen() {
                 }
             }
 
+            item {
+                val stockUnits = operationRecords.filter { it.type == "Product" && it.status == "Active" }.sumOf { it.quantity }
+                val openOrders = operationRecords.count { it.type == "Order" && it.status == "Open" }
+                val completedRevenue = operationRecords.filter { it.type == "Order" && it.status == "Completed" }.sumOf { it.amountInr }
+                val recordedExpenses = operationRecords.filter { it.type == "Expense" }.sumOf { it.amountInr }
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    shape = RoundedCornerShape(18.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Border)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("BUSINESS OPERATIONS", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(5.dp))
+                        Text("Your offline business desk", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
+                        Text("Track products/stock, orders, expenses and tasks. Records are saved on this device; they are not synced to the cloud.", color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(Modifier.weight(1f).background(Page, RoundedCornerShape(10.dp)).padding(10.dp)) {
+                                Text("ACTIVE STOCK", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text(stockUnits.toString().removeSuffix(".0"), color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Column(Modifier.weight(1f).background(Page, RoundedCornerShape(10.dp)).padding(10.dp)) {
+                                Text("OPEN ORDERS", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text(openOrders.toString(), color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(Modifier.weight(1f).background(Page, RoundedCornerShape(10.dp)).padding(10.dp)) {
+                                Text("COMPLETED SALES", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("₹" + completedRevenue.toInt().toString(), color = Green, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Column(Modifier.weight(1f).background(Page, RoundedCornerShape(10.dp)).padding(10.dp)) {
+                                Text("RECORDED EXPENSES", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("₹" + recordedExpenses.toInt().toString(), color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(Modifier.height(14.dp))
+                        Text("Add a record", fontWeight = FontWeight.SemiBold, color = Ink)
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("Product", "Order", "Expense", "Task").forEach { type ->
+                                if (operationType == type) {
+                                    Button(
+                                        onClick = { operationType = type },
+                                        modifier = Modifier.weight(1f),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) { Text(type, fontSize = 11.sp) }
+                                } else {
+                                    OutlinedButton(
+                                        onClick = { operationType = type },
+                                        modifier = Modifier.weight(1f),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) { Text(type, fontSize = 11.sp) }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = operationTitle,
+                            onValueChange = { operationTitle = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text(when (operationType) { "Product" -> "Product name / SKU"; "Order" -> "Order reference / customer"; "Expense" -> "Expense category"; else -> "Task title" }) },
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = operationQuantity,
+                                onValueChange = { operationQuantity = it },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                label = { Text(if (operationType == "Product") "Stock units" else if (operationType == "Order") "Order quantity" else "Count") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            OutlinedTextField(
+                                value = operationAmount,
+                                onValueChange = { operationAmount = it },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                label = { Text(if (operationType == "Product") "Unit cost ₹" else if (operationType == "Order") "Order total ₹" else if (operationType == "Expense") "Expense ₹" else "Optional value ₹") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                        }
+                        OutlinedTextField(
+                            value = operationNote,
+                            onValueChange = { operationNote = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Notes (optional)") },
+                            shape = RoundedCornerShape(10.dp),
+                            minLines = 1,
+                            maxLines = 3
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                val title = operationTitle.trim()
+                                val quantity = operationQuantity.toDoubleOrNull() ?: 1.0
+                                val amount = operationAmount.toDoubleOrNull() ?: 0.0
+                                if (title.isBlank() || quantity <= 0 || amount < 0) {
+                                    message = "Enter a name, positive quantity and non-negative amount to save the record."
+                                } else {
+                                    val status = when (operationType) {
+                                        "Order" -> "Open"
+                                        "Task" -> "To do"
+                                        "Expense" -> "Recorded"
+                                        else -> "Active"
+                                    }
+                                    val record = OperationRecord(
+                                        id = System.currentTimeMillis(),
+                                        type = operationType,
+                                        title = title,
+                                        quantity = quantity,
+                                        amountInr = amount,
+                                        status = status,
+                                        note = operationNote.trim()
+                                    )
+                                    val updated = listOf(record) + operationRecords
+                                    operationRecords = updated
+                                    saveOperationRecords(context, updated)
+                                    operationTitle = ""
+                                    operationQuantity = "1"
+                                    operationAmount = ""
+                                    operationNote = ""
+                                    message = "$operationType record saved on this device."
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp)
+                        ) { Text("Save " + operationType.lowercase()) }
+                        if (operationRecords.isNotEmpty()) {
+                            Spacer(Modifier.height(14.dp))
+                            Text("RECENT RECORDS · " + operationRecords.size, color = Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            operationRecords.take(30).forEach { record ->
+                                Divider(color = Border, modifier = Modifier.padding(vertical = 7.dp))
+                                Row(verticalAlignment = Alignment.Top) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(record.title, color = Ink, fontWeight = FontWeight.SemiBold)
+                                        Text(record.type + " · " + record.status + " · Qty " + record.quantity.toString().removeSuffix(".0"), color = Muted, fontSize = 11.sp)
+                                        if (record.amountInr > 0) Text("₹" + record.amountInr.toString().removeSuffix(".0"), color = Green, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                                        if (record.note.isNotBlank()) Text(record.note, color = Muted, fontSize = 12.sp)
+                                    }
+                                    if (record.type != "Expense") {
+                                        OutlinedButton(
+                                            onClick = {
+                                                val nextStatus = when (record.type) {
+                                                    "Order" -> if (record.status == "Open") "Completed" else "Open"
+                                                    "Task" -> if (record.status == "To do") "Done" else "To do"
+                                                    else -> if (record.status == "Active") "Archived" else "Active"
+                                                }
+                                                val updated = operationRecords.map { if (it.id == record.id) it.copy(status = nextStatus) else it }
+                                                operationRecords = updated
+                                                saveOperationRecords(context, updated)
+                                            },
+                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) { Text(if (record.type == "Order") "Toggle status" else if (record.type == "Task") "Done / undo" else "Archive", fontSize = 10.sp) }
+                                    }
+                                    IconButton(onClick = {
+                                        val updated = operationRecords.filterNot { it.id == record.id }
+                                        operationRecords = updated
+                                        saveOperationRecords(context, updated)
+                                    }) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Delete record", tint = Muted)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             if (tips.isNotEmpty()) {
                 item {
                     Text("Recommended next steps", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Ink)
@@ -556,6 +739,52 @@ private fun MarketMitraScreen() {
             }
         }
     }
+}
+
+private data class OperationRecord(
+    val id: Long,
+    val type: String,
+    val title: String,
+    val quantity: Double,
+    val amountInr: Double,
+    val status: String,
+    val note: String
+)
+
+private fun loadOperationRecords(context: Context): List<OperationRecord> {
+    return runCatching {
+        val raw = context.getSharedPreferences("marketmitra_operations", Context.MODE_PRIVATE)
+            .getString("records_json", "[]") ?: "[]"
+        val array = org.json.JSONArray(raw)
+        (0 until array.length()).mapNotNull { index ->
+            val obj = array.optJSONObject(index) ?: return@mapNotNull null
+            OperationRecord(
+                id = obj.optLong("id"),
+                type = obj.optString("type", "Task"),
+                title = obj.optString("title"),
+                quantity = obj.optDouble("quantity", 1.0),
+                amountInr = obj.optDouble("amountInr", 0.0),
+                status = obj.optString("status", "Active"),
+                note = obj.optString("note")
+            ).takeIf { it.title.isNotBlank() }
+        }
+    }.getOrDefault(emptyList())
+}
+
+private fun saveOperationRecords(context: Context, records: List<OperationRecord>) {
+    val array = org.json.JSONArray()
+    records.forEach { record ->
+        array.put(JSONObject()
+            .put("id", record.id)
+            .put("type", record.type)
+            .put("title", record.title)
+            .put("quantity", record.quantity)
+            .put("amountInr", record.amountInr)
+            .put("status", record.status)
+            .put("note", record.note))
+    }
+    context.getSharedPreferences("marketmitra_operations", Context.MODE_PRIVATE)
+        .edit().putString("records_json", array.toString()).apply()
 }
 
 private data class LiveResponse(
