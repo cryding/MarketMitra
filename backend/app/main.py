@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+from concurrent.futures import ThreadPoolExecutor
 import math
 import re
 import socket
@@ -83,9 +84,12 @@ def _robots_allows(url: str, user_agent: str) -> bool:
     parser = urllib.robotparser.RobotFileParser()
     parser.set_url(robots_url)
     try:
-        parser.read()
-    except (OSError, urllib.error.URLError, ValueError):
-        # Fail closed if robots policy cannot be checked.
+        request = urllib.request.Request(robots_url, headers={"User-Agent": user_agent})
+        with urllib.request.urlopen(request, timeout=3) as response:
+            raw = response.read(256_000).decode("utf-8", errors="replace")
+        parser.parse(raw.splitlines())
+    except (OSError, urllib.error.URLError, ValueError, TimeoutError):
+        # Fail closed if robots policy cannot be checked; never bypass access controls.
         return False
     return parser.can_fetch(user_agent, url)
 
@@ -168,6 +172,9 @@ MARKETPLACE_SEARCHES = {
     "Meesho": lambda q: "https://www.meesho.com/search?q=" + urllib.parse.quote_plus(q),
     "Flipkart": lambda q: "https://www.flipkart.com/search?q=" + urllib.parse.quote_plus(q),
     "Amazon India": lambda q: "https://www.amazon.in/s?k=" + urllib.parse.quote_plus(q),
+    "Myntra": lambda q: "https://www.myntra.com/search?q=" + urllib.parse.quote_plus(q),
+    "Snapdeal": lambda q: "https://www.snapdeal.com/search?keyword=" + urllib.parse.quote_plus(q),
+    "JioMart": lambda q: "https://www.jiomart.com/search/" + urllib.parse.quote_plus(q),
 }
 
 _PRICE_RE = re.compile(r"(?:₹|Rs\\.?\\s*)([0-9][0-9,]*(?:\\.[0-9]{1,2})?)", re.IGNORECASE)
@@ -295,8 +302,11 @@ def research_live(q: str = Query(default="", max_length=100)) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail="Enter at least two characters to research a product.")
     results: list[dict[str, Any]] = []
     source_status: list[dict[str, str]] = []
-    for source_name, build_url in MARKETPLACE_SEARCHES.items():
-        status = _fetch_marketplace_search(source_name, build_url(query))
+    # Fetch permitted sources concurrently so adding adapters does not multiply latency.
+    source_requests = [(name, build_url(query)) for name, build_url in MARKETPLACE_SEARCHES.items()]
+    with ThreadPoolExecutor(max_workers=min(6, len(source_requests))) as pool:
+        source_results = list(pool.map(lambda pair: _fetch_marketplace_search(pair[0], pair[1]), source_requests))
+    for status in source_results:
         source_status.append({"source": status["source"], "status": status["status"]})
         results.extend(status["items"])
     # Prefer results that contain query terms and have explicit prices.
@@ -509,6 +519,34 @@ class EmpireWorkspaceRequest(MarketAnalysisRequest):
     sourcing_type: str = Field(default="wholesale", max_length=40)
 
 
+def _research_hub_links(query: str, location: str, sourcing_type: str) -> list[dict[str, str]]:
+    """Build free research and official business-setup entry points; these are links, not scraped evidence."""
+    q = urllib.parse.quote_plus(query)
+    local = urllib.parse.quote_plus(query + " supplier " + location)
+    supplier = urllib.parse.quote_plus(query + " " + sourcing_type + " supplier")
+    return [
+        {"name": "Google Trends", "category": "Demand signals", "description": "Compare search-interest patterns; not sales data.", "url": "https://trends.google.com/trends/explore?geo=IN&q=" + q},
+        {"name": "Google Search", "category": "Demand signals", "description": "Look for customer questions, price points and unmet needs.", "url": "https://www.google.com/search?q=" + q},
+        {"name": "YouTube Research", "category": "Demand signals", "description": "Find product demos, reviews and customer language.", "url": "https://www.youtube.com/results?search_query=" + q},
+        {"name": "Google Shopping", "category": "Price comparison", "description": "Manually compare similar products and listed prices.", "url": "https://www.google.com/search?tbm=shop&q=" + q},
+        {"name": "Amazon India", "category": "Marketplaces", "description": "Manual listing and price verification.", "url": "https://www.amazon.in/s?k=" + q},
+        {"name": "Flipkart", "category": "Marketplaces", "description": "Manual listing and price verification.", "url": "https://www.flipkart.com/search?q=" + q},
+        {"name": "Meesho", "category": "Marketplaces", "description": "Manual listing and price verification.", "url": "https://www.meesho.com/search?q=" + q},
+        {"name": "Myntra", "category": "Marketplaces", "description": "Fashion listing and positioning research.", "url": "https://www.myntra.com/search?q=" + q},
+        {"name": "Snapdeal", "category": "Marketplaces", "description": "Manual assortment and price research.", "url": "https://www.snapdeal.com/search?keyword=" + q},
+        {"name": "JioMart", "category": "Marketplaces", "description": "Manual assortment and price research.", "url": "https://www.jiomart.com/search/" + q},
+        {"name": "IndiaMART", "category": "Supplier sourcing", "description": "Discover suppliers; verify identity, samples and terms.", "url": "https://dir.indiamart.com/search.mp?ss=" + supplier},
+        {"name": "TradeIndia", "category": "Supplier sourcing", "description": "Discover manufacturers and wholesalers.", "url": "https://www.tradeindia.com/search.html?keyword=" + supplier},
+        {"name": "ExportersIndia", "category": "Supplier sourcing", "description": "Discover suppliers and manufacturers.", "url": "https://www.exportersindia.com/search.php?srch_catg_ty=prod&term=" + supplier},
+        {"name": "Nearby suppliers", "category": "Supplier sourcing", "description": "Search local suppliers around the chosen location.", "url": "https://www.google.com/maps/search/" + local},
+        {"name": "Udyam Registration", "category": "Official setup", "description": "Official MSME registration portal; check current eligibility and requirements.", "url": "https://udyamregistration.gov.in/"},
+        {"name": "GST Portal", "category": "Official setup", "description": "Check GST registration and compliance requirements for your business.", "url": "https://www.gst.gov.in/"},
+        {"name": "FSSAI FoSCoS", "category": "Official setup", "description": "For food businesses only; check applicable licence requirements.", "url": "https://foscos.fssai.gov.in/"},
+        {"name": "IP India", "category": "Official setup", "description": "Trademark and intellectual-property information.", "url": "https://ipindia.gov.in/"},
+        {"name": "ONDC", "category": "Sales channels", "description": "Explore the open-network ecosystem and seller onboarding options.", "url": "https://ondc.org/"},
+    ]
+
+
 def _supplier_search_links(query: str, location: str, sourcing_type: str) -> list[dict[str, str]]:
     """Return search entry points, not fabricated or verified supplier listings."""
     search = urllib.parse.quote_plus(query + " " + sourcing_type + " supplier")
@@ -621,6 +659,11 @@ def empire_workspace(request: EmpireWorkspaceRequest) -> dict[str, Any]:
             "links": supplier_links,
             "verification_required": True,
             "note": "These links open supplier-search pages. MarketMitra has not verified individual suppliers, prices, certifications or stock."
+        },
+        "research_hub": {
+            "mode": "free_link_hub",
+            "links": _research_hub_links(request.q.strip(), request.location.strip(), request.sourcing_type.strip()),
+            "note": "External research links are manual discovery tools, not evidence collected by the scraper. Only sources shown as successfully fetched count toward the evidence score."
         },
         "business_plan": business_plan,
         "next_actions": [
