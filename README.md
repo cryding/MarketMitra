@@ -6,9 +6,10 @@
 
 ## What is in this repository
 
-- `android/`: Kotlin + Jetpack Compose Android client.
-- `backend/`: FastAPI service with public-page extraction, six best-effort marketplace adapters, transparent price/unit-economics analysis, supplier discovery, budget planning and a free research/official-setup link hub.
-- `.github/workflows/ci.yml`: Python tests and Android debug APK build/artifact.
+- `android/`: Kotlin + Jetpack Compose Android client with modern research UI, API Anything JSON-report import, and offline product/stock, order, expense and task records.
+- `backend/`: FastAPI service with public-page extraction, six best-effort marketplace adapters, transparent price/unit-economics analysis, supplier discovery, budget planning, official setup links and API Anything report aggregation.
+- `tools/api-anything/research.mjs`: optional local read-only research runner for API Anything's bundled Amazon.com, YouTube and Hacker News operations.
+- `.github/workflows/ci.yml`: Python tests, API Anything runner syntax check and Android debug APK build/artifact.
 - No paid AI APIs or paid dependencies are required for the first milestone.
 
 ## Run the backend locally
@@ -66,12 +67,12 @@ The backend can be deployed to any compatible Python host with a free tier, but 
 - Never enter passwords, session cookies, API keys, or private account URLs into the scraper.
 - Product opportunity scores are heuristic signals, not guarantees of demand, profit, or export success.
 
-## Roadmap
+## Current operational scope and next milestones
 
-1. **v0.4.0:** modernized Android hero, grouped Business Toolkit, six best-effort marketplace adapters, free demand/price research links, supplier discovery and official business setup portals.
-2. Add stronger evidence-backed scoring, structured source coverage and actionable validation experiments without confusing search interest/listings with actual sales.
-3. Add saved projects, offline reports, CSV export and product/supplier comparison history.
-4. Add more open-data or official data connectors only where access terms, reliability and free-tier limits are clear.
+- **v0.5.0 implementation:** API Anything local research runner + currency-safe aggregation endpoint + Android JSON report import; offline records for products/stock, orders, expenses and tasks; six best-effort India marketplace adapters; unit economics and business launch suggestions.
+- Offline operations records are stored only on the Android device and are not cloud-synced, backed by a server database, or automatically connected to marketplace orders.
+- Next: export/import backups, link order items to stock movements, supplier/product comparison history, saved research projects and CSV reports.
+- Later: optional sync with a configured persistent database, permission-aware marketplace connectors and stronger evidence-backed recommendations. No sales, demand or profit guarantees.
 
 ## API Anything research connector
 
@@ -103,7 +104,7 @@ cd ../MarketMitra
 node tools/api-anything/research.mjs "cotton kurti"
 ```
 
-The runner writes `marketmitra-api-anything-report.json` locally and submits the normalized results to `POST /api/v1/research/aggregate`. Override the API with `API_URL=http://127.0.0.1:8000` for local development. The API response is stateless; the report file is the local saved copy. Do not upload cookies, tokens, private account data or secrets.
+The runner writes `marketmitra-api-anything-report.json` locally and submits the normalized results to `POST /api/v1/research/aggregate`. Override the API with `API_URL=http://127.0.0.1:8000` for local development. To view the extra findings inside the Android app, transfer the JSON report to your phone and tap **Import API Anything research report (JSON)**. The API response is stateless; the report file is the local saved copy. Do not upload cookies, tokens, private account data or secrets.
 
 ### Teach more operations safely
 
