@@ -265,6 +265,32 @@ def test_research_signals_use_independent_feeds_and_label_evidence_not_demand(mo
     assert len(body["items"]) == 3
     assert "not demand" in body["score_meaning"].lower()
     assert any("not proof of orders or sales" in item["why"] for item in body["recommendations"])
+    assert len(body["research_links"]) >= 15
+    assert all(link["url"].startswith("https://") for link in body["research_links"])
+    assert any(link["id"] == "ogd_india" for link in body["research_links"])
+
+
+def test_research_source_registry_clearly_separates_live_scrapers_and_discovery_links():
+    response = client.get("/api/v1/research/sources", params={"q": "cotton kurti"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["catalogue"] == "MarketMitra Research Source Registry"
+    assert body["count"] >= 15
+    sources = {source["id"]: source for source in body["sources"]}
+    assert sources["google_news_rss"]["integration_status"] == "live_feed"
+    assert sources["meesho"]["integration_status"] == "best_effort_adapter"
+    assert sources["ogd_india"]["integration_status"] == "discovery_only"
+    assert "cotton+kurti" in sources["indiamart"]["url"]
+    assert any("robots.txt" in policy for policy in body["policy"])
+
+
+def test_research_source_registry_filters_categories_and_rejects_unknown_category():
+    response = client.get("/api/v1/research/sources", params={"category": "official_data"})
+    assert response.status_code == 200
+    body = response.json()
+    assert all(source["category"] == "official_data" for source in body["sources"])
+    invalid = client.get("/api/v1/research/sources", params={"category": "private_api"})
+    assert invalid.status_code == 422
 
 
 def test_business_economics_calculates_profit_and_cash_separately():
