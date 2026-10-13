@@ -69,7 +69,7 @@ The backend can be deployed to any compatible Python host with a free tier, but 
 
 ## Current operational scope and next milestones
 
-- **v0.6.0 phone-first workflow:** built-in HTTPS research with no local CLI/report import; offline records for products/stock, orders, expenses and tasks; six best-effort India marketplace adapters; unit economics and business launch suggestions.
+- **v0.7.0 phone-first workflow:** public-marketplace research, independent RSS trend/news signal collection, cross-source evidence coverage, transparent unit economics, offline product/stock/order/expense/task records, order-linked stock deduction, low-stock indicators, JSON backup/restore and CSV export.
 - Offline operations records are stored only on the Android device and are not cloud-synced, backed by a server database, or automatically connected to marketplace orders.
 - Next: export/import backups, link order items to stock movements, supplier/product comparison history, saved research projects and CSV reports.
 - Later: optional sync with a configured persistent database, permission-aware marketplace connectors and stronger evidence-backed recommendations. No sales, demand or profit guarantees.
