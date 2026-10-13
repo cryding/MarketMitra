@@ -73,6 +73,48 @@ The backend can be deployed to any compatible Python host with a free tier, but 
 3. Add saved projects, offline reports, CSV export and product/supplier comparison history.
 4. Add more open-data or official data connectors only where access terms, reliability and free-tier limits are clear.
 
+## API Anything research connector
+
+MarketMitra can optionally enrich its own India-focused public listing research with read-only operations from [goodnight000/api-anything](https://github.com/goodnight000/api-anything). API Anything is a **local CLI/MCP tool**, not a hosted scraping API; this connector runs on your computer and sends only normalized research results to MarketMitra's aggregation endpoint.
+
+### What it can collect
+
+- **Amazon.com**: product title, ASIN and USD price from its bundled `amazon.search` operation.
+- **YouTube**: video title, channel and visible view-count text from `youtube.search`.
+- **Hacker News**: technology/business discussion results from `hacker-news.search`; relevance depends on the query.
+- The existing MarketMitra backend separately attempts India-focused Meesho, Flipkart, Amazon India, Myntra, Snapdeal and JioMart public listing extraction. These sources can be blocked or unavailable.
+
+The runner deliberately uses API Anything's `--max-tier 1` (plain HTTP only). It does not log into websites, use browser fallback, bypass CAPTCHA, or perform write operations. API Anything operations are limited to the features that have been learned and verified. **Amazon.com USD prices are never mixed with Indian INR prices**, and video views are treated as attention signals—not sales.
+
+### Install and run
+
+Requirements: Node.js 22.13+ and Git. A Chromium browser is only needed if you later teach additional site operations. API Anything is MIT-licensed and does not require a paid AI/API key for the included read operations. Its package is not yet published to npm.
+
+From Git Bash, WSL or another POSIX shell:
+
+```bash
+git clone https://github.com/goodnight000/api-anything.git
+cd api-anything
+npm ci --no-audit --no-fund
+npm install -g "$(npm pack --silent)" --no-audit --no-fund
+api-anything sites
+api-anything call amazon search "k=cotton kurti" --max-tier 1
+cd ../MarketMitra
+node tools/api-anything/research.mjs "cotton kurti"
+```
+
+The runner writes `marketmitra-api-anything-report.json` locally and submits the normalized results to `POST /api/v1/research/aggregate`. Override the API with `API_URL=http://127.0.0.1:8000` for local development. The API response is stateless; the report file is the local saved copy. Do not upload cookies, tokens, private account data or secrets.
+
+### Teach more operations safely
+
+API Anything only knows its bundled or explicitly taught operations. To add a new site, first read its terms and access rules, inspect the public page with the API Anything skill, propose a read-only operation, and verify it with an input that was not used during learning. Do not teach operations that bypass access controls, paywalls, CAPTCHAs, or a site's restrictions. A site being listed in the MarketMitra research hub does not mean it has an API Anything adapter.
+
+```bash
+# Optional local checks
+node --check tools/api-anything/research.mjs
+cd backend && PYTHONPATH=. pytest -q
+```
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
