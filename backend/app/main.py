@@ -550,7 +550,7 @@ class APIAnythingAggregateRequest(BaseModel):
 def _external_price_value(raw: str | None) -> float | None:
     if not raw:
         return None
-    match = re.search(r"([0-9][0-9,]*(?:\\.[0-9]{1,2})?)", raw)
+    match = re.search(r"([0-9][0-9,]*(?:\.[0-9]{1,2})?)", raw)
     if not match:
         return None
     try:
