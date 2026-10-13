@@ -238,3 +238,62 @@ def test_supplier_links_are_search_links_not_claimed_verified_vendors():
     assert len(links) >= 3
     assert all(link["url"].startswith("https://") for link in links)
     assert all("supplier" in link["type"].lower() or "sourcing" in link["type"].lower() for link in links)
+
+
+def test_research_signals_use_independent_feeds_and_label_evidence_not_demand(monkeypatch):
+    from app import main
+
+    def fake_feed(name, url, query, max_items=12):
+        kind = "news_mention" if "Google News" in name else "search_trend"
+        return {"source": name, "status": "ok", "count": 1, "items": [{
+            "title": "Cotton kurti retail trends",
+            "url": "https://news.example/story" if kind == "news_mention" else "https://trends.example/story",
+            "summary": "Retail update",
+            "published_at": "",
+            "source": name,
+            "signal_type": kind,
+            "matched_terms": ["cotton", "kurti"],
+        }]}
+
+    monkeypatch.setattr(main, "_fetch_public_rss", fake_feed)
+    response = client.get("/api/v1/research/signals", params={"q": "cotton kurti"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["method"] == "Cross-Source Evidence Lens"
+    assert body["source_summary"]["with_matching_items"] == 2
+    assert len(body["items"]) == 2
+    assert "not demand" in body["score_meaning"].lower()
+    assert any("not proof of orders or sales" in item["why"] for item in body["recommendations"])
+
+
+def test_business_economics_calculates_profit_and_cash_separately():
+    response = client.post("/api/v1/operations/economics", json={
+        "revenue_inr": 10000,
+        "opening_inventory_cost_inr": 1000,
+        "purchases_inr": 4000,
+        "closing_inventory_cost_inr": 1500,
+        "operating_expenses_inr": 500,
+        "marketplace_fees_inr": 800,
+        "shipping_and_packaging_inr": 400,
+        "returns_and_refunds_inr": 500,
+        "taxes_inr": 300,
+        "cash_received_inr": 8000,
+        "cash_paid_inr": 6000,
+        "monthly_fixed_costs_inr": 2000,
+        "average_order_value_inr": 500,
+        "target_net_margin_pct": 20
+    })
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cost_of_goods_sold_inr"] == 3500
+    assert body["net_sales_after_refunds_inr"] == 9500
+    assert body["gross_profit_inr"] == 6000
+    assert body["operating_costs_inr"] == 2000
+    assert body["net_profit_before_unentered_costs_inr"] == 4000
+    assert body["cash_movement_inr"] == 2000
+    assert body["break_even_orders_at_average_order_value"] == 4
+
+
+def test_research_signals_rejects_too_short_query():
+    response = client.get("/api/v1/research/signals", params={"q": "x"})
+    assert response.status_code == 422
