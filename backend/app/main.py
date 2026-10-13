@@ -307,14 +307,21 @@ def research_live(q: str = Query(default="", max_length=100)) -> dict[str, Any]:
     with ThreadPoolExecutor(max_workers=min(6, len(source_requests))) as pool:
         source_results = list(pool.map(lambda pair: _fetch_marketplace_search(pair[0], pair[1]), source_requests))
     for status in source_results:
-        source_status.append({"source": status["source"], "status": status["status"]})
+        source_status.append({
+            "source": status["source"],
+            "status": status["status"],
+            "items_found": len(status["items"]),
+        })
         results.extend(status["items"])
-    # Prefer results that contain query terms and have explicit prices.
+    # Prefer results that contain query terms and have explicit prices. If relevant
+    # results exist, drop generic navigation/category links that would inflate counts.
     query_terms = [term.casefold() for term in query.split() if len(term) > 1]
     for item in results:
         name = item.get("name", "").casefold()
         item["relevance"] = sum(1 for term in query_terms if term in name)
         item["has_price"] = bool(item.get("price"))
+    if any(item["relevance"] > 0 for item in results):
+        results = [item for item in results if item["relevance"] > 0]
     results.sort(key=lambda item: (item["relevance"], item["has_price"]), reverse=True)
     unique_results: list[dict[str, Any]] = []
     seen_names: set[str] = set()
@@ -377,7 +384,10 @@ def analyze_market(request: MarketAnalysisRequest) -> dict[str, Any]:
     items = research.get("items", [])
     sources = research.get("sources", [])
     prices = sorted(value for item in items if (value := _price_value(str(item.get("price", "")))) is not None)
-    source_count = sum(1 for source in sources if source.get("status") == "ok")
+    source_count = sum(
+        1 for source in sources
+        if source.get("status") == "ok" and source.get("items_found", 1) > 0
+    )
     item_count = len(items)
     priced_count = len(prices)
     price_coverage = priced_count / item_count if item_count else 0.0
