@@ -10,7 +10,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import urllib.robotparser
-from typing import Any
+from typing import Any, Literal
 
 from bs4 import BeautifulSoup
 from fastapi import FastAPI, HTTPException, Query
@@ -517,6 +517,139 @@ def analyze_market(request: MarketAnalysisRequest) -> dict[str, Any]:
             "Validate demand and supplier quality independently before investing."
         ],
         "fetched_at_utc": research.get("fetched_at_utc"),
+    }
+
+
+class APIAnythingSource(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    ok: bool
+    status: str = Field(max_length=80)
+    count: int = Field(default=0, ge=0, le=10000)
+    tier: int | None = Field(default=None, ge=1, le=3)
+    latency_ms: int | None = Field(default=None, ge=0, le=600000)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class APIAnythingItem(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    source: str = Field(min_length=1, max_length=100)
+    kind: Literal["product", "video", "article", "other"] = "other"
+    url: str | None = Field(default=None, max_length=2000)
+    price: str | None = Field(default=None, max_length=80)
+    currency: str = Field(default="UNKNOWN", max_length=8)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class APIAnythingAggregateRequest(BaseModel):
+    query: str = Field(min_length=2, max_length=100)
+    sources: list[APIAnythingSource] = Field(default_factory=list, max_length=30)
+    items: list[APIAnythingItem] = Field(default_factory=list, max_length=300)
+    collected_at_utc: str | None = Field(default=None, max_length=80)
+
+
+def _external_price_value(raw: str | None) -> float | None:
+    if not raw:
+        return None
+    match = re.search(r"([0-9][0-9,]*(?:\\.[0-9]{1,2})?)", raw)
+    if not match:
+        return None
+    try:
+        value = float(match.group(1).replace(",", ""))
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+@app.post("/api/v1/research/aggregate")
+def aggregate_external_research(request: APIAnythingAggregateRequest) -> dict[str, Any]:
+    """Aggregate local API Anything results without mixing currencies or overstating demand."""
+    query = request.query.strip()
+    items = [item.model_dump() for item in request.items]
+    source_successes = [source for source in request.sources if source.ok and source.count > 0]
+    currency_prices: dict[str, list[float]] = {}
+    for item in items:
+        value = _external_price_value(item.get("price"))
+        currency = str(item.get("currency", "UNKNOWN")).upper()
+        if value is not None and currency in {"INR", "USD", "GBP", "EUR"}:
+            currency_prices.setdefault(currency, []).append(value)
+
+    price_summaries: dict[str, dict[str, Any]] = {}
+    for currency, values in currency_prices.items():
+        values.sort()
+        middle = len(values) // 2
+        median = values[middle] if len(values) % 2 else (values[middle - 1] + values[middle]) / 2
+        price_summaries[currency] = {
+            "min": _money(values[0]),
+            "median": _money(median),
+            "max": _money(values[-1]),
+            "count": len(values),
+            "note": "Raw observed prices from the source. No currency conversion or landed-cost adjustment was applied."
+        }
+
+    kind_counts: dict[str, int] = {}
+    for item in items:
+        kind = str(item.get("kind", "other"))
+        kind_counts[kind] = kind_counts.get(kind, 0) + 1
+
+    recommendations: list[dict[str, str]] = []
+    if not source_successes:
+        recommendations.append({
+            "priority": "high",
+            "action": "No API Anything source returned usable records. Check the installed operations and retry a permitted source; do not interpret this as zero demand.",
+            "why": "Blocked, stale, unauthenticated or unconfigured operations are not evidence of an empty market."
+        })
+    if len(source_successes) < 2:
+        recommendations.append({
+            "priority": "high",
+            "action": "Cross-check the query on at least two independent sources before investing.",
+            "why": "A single source can be incomplete, biased or temporarily unavailable."
+        })
+    if items and not any(item.get("kind") == "product" for item in items):
+        recommendations.append({
+            "priority": "medium",
+            "action": "Collect comparable product listings with explicit currency and delivered price before estimating margins.",
+            "why": "Content/video/article results can indicate customer conversation but are not product prices or sales."
+        })
+    if "USD" in price_summaries and "INR" not in price_summaries:
+        recommendations.append({
+            "priority": "high",
+            "action": "Do not use USD listing prices as Indian selling-price evidence. Collect India-specific prices or calculate a fully landed import cost separately.",
+            "why": "This report intentionally keeps currencies separate."
+        })
+    if kind_counts.get("video", 0):
+        recommendations.append({
+            "priority": "medium",
+            "action": "Review video titles, channels and visible view counts to learn customer vocabulary and content angles; validate purchase intent with customer interviews or a small test.",
+            "why": "Video views are attention signals, not verified product demand or sales."
+        })
+    if not recommendations:
+        recommendations.append({
+            "priority": "medium",
+            "action": "Verify source pages, product variants, stock and shipping, then combine this report with customer feedback and a full unit-economics calculation.",
+            "why": "Aggregated public results are exploratory evidence, not a profit guarantee."
+        })
+
+    return {
+        "mode": "api_anything_research_aggregate",
+        "query": query,
+        "collected_at_utc": request.collected_at_utc,
+        "source_summary": {
+            "attempted": len(request.sources),
+            "with_results": len(source_successes),
+            "items_received": len(items),
+            "kind_counts": kind_counts,
+            "sources": [source.model_dump() for source in request.sources],
+        },
+        "price_summaries_by_currency": price_summaries,
+        "items": items,
+        "recommendations": recommendations,
+        "limitations": [
+            "API Anything is a local tool; this endpoint aggregates results explicitly submitted by the local research runner.",
+            "An operation must be taught and verified before use; not every feature of a website is covered.",
+            "A blocked or empty result is not proof of absent demand.",
+            "USD, INR and other currencies are never combined in a single price summary.",
+            "Respect each website's terms, rate limits, privacy rules and access controls."
+        ]
     }
 
 
