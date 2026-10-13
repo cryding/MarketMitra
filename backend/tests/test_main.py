@@ -66,6 +66,14 @@ def test_live_research_reports_source_status_and_suggestions(monkeypatch):
                     {"name": "Cotton Kurti", "price": "₹399", "url": "https://www.meesho.com/p/1", "source": source_name}
                 ],
             }
+        if source_name == "Flipkart":
+            return {
+                "source": source_name,
+                "status": "ok",
+                "items": [
+                    {"name": "Explore Plus navigation", "price": "", "url": "https://www.flipkart.com/plus", "source": source_name}
+                ],
+            }
         return {"source": source_name, "status": "blocked_by_robots_or_policy_unavailable", "items": []}
 
     monkeypatch.setattr(main, "_fetch_marketplace_search", fake_source)
