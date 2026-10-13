@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -75,6 +76,7 @@ private data class ResearchItem(
 
 private data class OpportunityTip(val title: String, val reason: String)
 private data class SupplierLink(val name: String, val type: String, val url: String)
+private data class ResearchHubLink(val name: String, val category: String, val description: String, val url: String)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -117,6 +119,8 @@ private fun MarketMitraScreen() {
     var competitionSummary by remember { mutableStateOf("") }
     var businessPlanSummary by remember { mutableStateOf("") }
     var supplierLinks by remember { mutableStateOf<List<SupplierLink>>(emptyList()) }
+    var researchLinks by remember { mutableStateOf<List<ResearchHubLink>>(emptyList()) }
+    var showBusinessToolkit by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Enter a product or category to start live research.") }
     var busy by remember { mutableStateOf(false) }
     var hasSearched by remember { mutableStateOf(false) }
@@ -130,17 +134,28 @@ private fun MarketMitraScreen() {
         ) {
             item {
                 Spacer(Modifier.height(18.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier.background(Blue, RoundedCornerShape(12.dp)).padding(10.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.Storefront, contentDescription = null, tint = Color.White)
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text("MarketMitra", fontSize = 25.sp, fontWeight = FontWeight.Bold, color = Ink)
-                        Text("LIVE MARKET RESEARCH", fontSize = 11.sp, color = Muted)
+                Box(
+                    modifier = Modifier.fillMaxWidth()
+                        .background(
+                            Brush.linearGradient(listOf(Color(0xFF14213D), Color(0xFF2457C5), Color(0xFF16794B))),
+                            RoundedCornerShape(22.dp)
+                        )
+                        .padding(18.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier.background(Color.White.copy(alpha = 0.14f), RoundedCornerShape(14.dp)).padding(12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Storefront, contentDescription = null, tint = Color.White)
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text("MarketMitra", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Spacer(Modifier.height(3.dp))
+                            Text("BUSINESS INTELLIGENCE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD7E6FF))
+                            Text("Research · Plan · Launch · Grow", fontSize = 12.sp, color = Color.White.copy(alpha = 0.88f))
+                        }
                     }
                 }
                 Spacer(Modifier.height(18.dp))
@@ -206,6 +221,7 @@ private fun MarketMitraScreen() {
                                     competitionSummary = ""
                                     businessPlanSummary = ""
                                     supplierLinks = emptyList()
+                                    researchLinks = emptyList()
                                     message = "Researching market, competitors, suppliers and business plan…"
                                     try {
                                         val response = withContext(Dispatchers.IO) {
@@ -220,6 +236,7 @@ private fun MarketMitraScreen() {
                                         competitionSummary = response.competitionSummary
                                         businessPlanSummary = response.businessPlanSummary
                                         supplierLinks = response.supplierLinks
+                                        researchLinks = response.researchLinks
                                         message = if (response.items.isEmpty()) {
                                             "No accessible listings returned this time. This does not prove there is no demand."
                                         } else {
@@ -334,6 +351,52 @@ private fun MarketMitraScreen() {
                 }
             }
 
+            if (researchLinks.isNotEmpty()) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        shape = RoundedCornerShape(18.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Border)
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text("BUSINESS TOOLKIT", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(5.dp))
+                            Text("From idea validation to launch", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Ink)
+                            Spacer(Modifier.height(5.dp))
+                            Text("Free research entry points, supplier discovery and official setup portals. External links are not scraped evidence or endorsements.", color = Muted, lineHeight = 19.sp)
+                            Spacer(Modifier.height(10.dp))
+                            Button(
+                                onClick = { showBusinessToolkit = !showBusinessToolkit },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text(if (showBusinessToolkit) "Hide business toolkit" else "Explore " + researchLinks.size + " business tools")
+                            }
+                            if (showBusinessToolkit) {
+                                researchLinks.groupBy { it.category }.forEach { (category, links) ->
+                                    Spacer(Modifier.height(12.dp))
+                                    Text(category.uppercase(), color = Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    links.forEach { link ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().clickable { openSource(context, link.url) }.padding(vertical = 9.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(Modifier.weight(1f)) {
+                                                Text(link.name, color = Ink, fontWeight = FontWeight.SemiBold)
+                                                Text(link.description, color = Muted, fontSize = 12.sp, lineHeight = 16.sp)
+                                            }
+                                            Spacer(Modifier.width(8.dp))
+                                            Text("Open ↗", color = Blue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                        }
+                                        Divider(color = Border)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             if (tips.isNotEmpty()) {
                 item {
                     Text("Recommended next steps", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Ink)
@@ -401,7 +464,8 @@ private data class LiveResponse(
     val profitSummary: String,
     val competitionSummary: String,
     val businessPlanSummary: String,
-    val supplierLinks: List<SupplierLink>
+    val supplierLinks: List<SupplierLink>,
+    val researchLinks: List<ResearchHubLink>
 )
 
 private fun fetchEmpireWorkspace(
@@ -562,7 +626,22 @@ private fun fetchEmpireWorkspace(
                 supplierLinks.add(SupplierLink(obj.optString("name"), obj.optString("type"), obj.optString("url")))
             }
         }
-        return LiveResponse(found, recommendations, sourceSummary, analysisSummary, priceSummary, profitSummary, competitionSummary, businessPlanSummary, supplierLinks)
+
+        val researchLinks = mutableListOf<ResearchHubLink>()
+        val researchHub = json.optJSONObject("research_hub") ?: JSONObject()
+        val researchArray = researchHub.optJSONArray("links")
+        if (researchArray != null) {
+            for (index in 0 until researchArray.length()) {
+                val obj = researchArray.optJSONObject(index) ?: continue
+                researchLinks.add(ResearchHubLink(
+                    name = obj.optString("name"),
+                    category = obj.optString("category", "Research"),
+                    description = obj.optString("description"),
+                    url = obj.optString("url")
+                ))
+            }
+        }
+        return LiveResponse(found, recommendations, sourceSummary, analysisSummary, priceSummary, profitSummary, competitionSummary, businessPlanSummary, supplierLinks, researchLinks)
     } finally {
         connection.disconnect()
     }
