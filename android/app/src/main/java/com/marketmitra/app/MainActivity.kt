@@ -3,6 +3,8 @@ package com.marketmitra.app
 import android.os.Bundle
 import android.content.Context
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -141,6 +143,29 @@ private fun MarketMitraScreen() {
     var operationNote by remember { mutableStateOf("") }
     var operationLinkedProduct by remember { mutableStateOf("") }
     var operationRecords by remember { mutableStateOf(loadOperationRecords(context)) }
+    val exportOperationsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                val csv = buildString {
+                    appendLine("id,type,title,quantity,amount_inr,status,note,linked_product")
+                    operationRecords.forEach { record ->
+                        appendLine(listOf(
+                            record.id.toString(), record.type, record.title, record.quantity.toString(),
+                            record.amountInr.toString(), record.status, record.note, record.linkedProduct
+                        ).joinToString(",") { csvCell(it) })
+                    }
+                }
+                val output = context.contentResolver.openOutputStream(uri)
+                    ?: throw IllegalStateException("Could not open the selected file.")
+                output.bufferedWriter().use { it.write(csv) }
+                message = "Exported ${operationRecords.size} business record(s) to CSV."
+            }.onFailure { error ->
+                message = "Export failed: " + (error.message ?: "could not write file")
+            }
+        }
+    }
 
     Surface(modifier = Modifier.fillMaxSize(), color = Page) {
         LazyColumn(
@@ -503,6 +528,12 @@ private fun MarketMitraScreen() {
                                 Text("Active products with 3 units or fewer", color = Muted, fontSize = 10.sp)
                             }
                         }
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = { exportOperationsLauncher.launch("marketmitra-operations.csv") },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp)
+                        ) { Text("Export business records to CSV") }
                         Spacer(Modifier.height(14.dp))
                         Text("Add a record", fontWeight = FontWeight.SemiBold, color = Ink)
                         Spacer(Modifier.height(8.dp))
@@ -779,6 +810,8 @@ private fun loadOperationRecords(context: Context): List<OperationRecord> {
         }
     }.getOrDefault(emptyList())
 }
+
+private fun csvCell(value: String): String = "\"" + value.replace("\"", "\"\"") + "\""
 
 private fun saveOperationRecords(context: Context, records: List<OperationRecord>) {
     val array = org.json.JSONArray()
