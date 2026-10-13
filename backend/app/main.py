@@ -918,7 +918,9 @@ def _collect_demand_signals(query: str) -> dict[str, Any]:
     source_hits = sum(1 for result in results if result.get("count", 0) > 0)
     news_hits = sum(1 for item in unique if item.get("signal_type") == "news_mention")
     trend_hits = sum(1 for item in unique if item.get("signal_type") == "search_trend")
-    coverage_score = min(100, successful * 25 + min(news_hits, 5) * 8 + min(trend_hits, 3) * 10)
+    # Score corroboration breadth, not raw article volume. Ten articles from one feed
+    # must not outweigh a missing independent source.
+    coverage_score = min(100, source_hits * 35 + min(news_hits, 3) * 5 + min(trend_hits, 3) * 5)
     recommendations: list[dict[str, str]] = []
     if source_hits >= 2:
         recommendations.append({
