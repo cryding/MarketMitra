@@ -33,6 +33,8 @@ Open `http://127.0.0.1:8000/docs` for the API docs and `http://127.0.0.1:8000/he
 - `GET /health` — service health.
 - `GET /api/v1/research/products?q=kurti` — deterministic sample product ideas (not live market data).
 - `POST /api/v1/scrape` with JSON `{"url":"https://example.com/product-page"}` — extracts a limited set of metadata from a public HTML page, subject to safety and robots checks.
+- `GET /api/v1/research/signals?q=cotton%20kurti` — collects public Google Trends India RSS and query-scoped Google News India RSS items; it returns source coverage and cautious cross-source suggestions, not sales data.
+- `POST /api/v1/operations/economics` — calculates COGS, net sales after refunds, gross profit, operating costs, net-profit estimate, cash movement and a rough sales target from explicit period totals.
 
 Example:
 
@@ -53,7 +55,11 @@ gradle assembleDebug
 
 The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. GitHub Actions is configured to build it and upload an artifact. A green workflow run is required before calling the APK build verified.
 
-The app supports local demo product filtering. To use live backend scraping, paste a reachable backend base URL into the app (for example `http://10.0.2.2:8000` when the Android emulator can reach a backend running on the same computer). A real phone needs a reachable LAN or HTTPS deployment URL; this repository does not claim a backend has already been deployed.
+The Android app uses the configured HTTPS backend automatically. On the phone, enter a product/category and tap **Start market research**. No terminal, local Node.js installation, report file, manual API URL, or extra setup is required. Live results depend on the production backend and on which public sources allow access.
+
+Business operations are stored on-device for offline use. Orders can link to a product by exact name/SKU; completing an order deducts stock only when the linked product exists and has sufficient units, and reopening it restores the stock. The app shows low-stock products and a clearly labelled estimated result. Use **Backup JSON**, **Restore JSON** and **Export business records to CSV** from the phone UI to protect or export records. Restoring a JSON backup replaces the current device records.
+
+The Cross-Source Evidence Lens checks public RSS feeds from Google Trends India and Google News India in parallel with marketplace research. It deduplicates links and labels source coverage separately from actual demand. Trends and news mentions do not establish purchase intent or sales volume.
 
 ## Free deployment notes
 
