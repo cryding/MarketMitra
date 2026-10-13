@@ -6,7 +6,7 @@
 
 ## What is in this repository
 
-- `android/`: Kotlin + Jetpack Compose Android client with phone-first research UI, offline product/stock, order, expense and task records, stock-linked order completion, return/refund lifecycle, low-stock indicators, and JSON/CSV backup tools.
+- `android/`: Kotlin + Jetpack Compose Android client with phone-first research UI, live research source registry, offline product/stock/order/expense/task records, stock-linked order completion, return/refund lifecycle, low-stock indicators, and JSON/CSV backup tools.
 - `backend/`: FastAPI service with public-page extraction, six best-effort marketplace adapters, transparent price/unit-economics analysis, supplier discovery, budget planning, official setup links and phone-first live research aggregation.
 - `.github/workflows/ci.yml`: Python tests and Android debug APK build/artifact.
 - No paid AI APIs or paid dependencies are required for the first milestone.
@@ -32,7 +32,8 @@ Open `http://127.0.0.1:8000/docs` for the API docs and `http://127.0.0.1:8000/he
 - `GET /health` — service health.
 - `GET /api/v1/research/products?q=kurti` — deterministic sample product ideas (not live market data).
 - `POST /api/v1/scrape` with JSON `{"url":"https://example.com/product-page"}` — extracts a limited set of metadata from a public HTML page, subject to safety and robots checks.
-- `GET /api/v1/research/signals?q=cotton%20kurti` — collects public Google Trends India RSS, query-scoped Google News India RSS and public Reddit search RSS items; it returns source coverage and cautious cross-source suggestions, not sales data.
+- `GET /api/v1/research/signals?q=cotton%20kurti` — collects public Google Trends India RSS, query-scoped Google News India RSS and public Reddit search RSS items; it returns source coverage, query-specific research links and cautious suggestions, not sales data.
+- `GET /api/v1/research/sources?q=cotton%20kurti` — source registry for public RSS feeds, six best-effort marketplace adapters, official OGD India/API Setu portals, supplier discovery and manual research links. Filter with `category=official_data` or other returned categories.
 - `POST /api/v1/operations/economics` — calculates COGS, net sales after refunds, gross profit, operating costs, net-profit estimate, cash movement and a rough sales target from explicit period totals.
 
 Example:
@@ -58,7 +59,7 @@ The Android app uses the configured HTTPS backend automatically. On the phone, e
 
 Business operations are stored on-device for offline use. Orders can link to a product by exact name/SKU; completing a sale deducts stock only when the linked product exists and has sufficient units. Recording a return restores linked stock, excludes the returned order value from estimated sales, and permits a later resale only after checking stock again. The dashboard shows returned order count/value, low-stock products and a clearly labelled estimated result. Refunds are assumed to be full-order refunds in this estimate; marketplace fees, taxes and payment settlement are not automatically reconciled. Use **Backup JSON**, **Restore JSON** and **Export business records to CSV** from the phone UI to protect or export records. Restoring a JSON backup replaces the current device records.
 
-The Cross-Source Evidence Lens checks public RSS feeds from Google Trends India, Google News India and Reddit in parallel with marketplace research. It deduplicates links and labels source coverage separately from actual demand. Trends and news mentions do not establish purchase intent or sales volume.
+The Cross-Source Evidence Lens checks public RSS feeds from Google Trends India, Google News India and Reddit in parallel with marketplace research. Its source registry clearly separates live feeds, best-effort public-page adapters, and discovery-only links; official OGD India and API Setu are currently discovery sources, not automatic data ingestion. It deduplicates links and labels source coverage separately from actual demand. Trends and news mentions do not establish purchase intent or sales volume.
 
 ## Free deployment notes
 
@@ -74,7 +75,7 @@ The backend can be deployed to any compatible Python host with a free tier, but 
 
 ## Current operational scope and next milestones
 
-- **v0.8.0 phone-first workflow:** public-marketplace research, independent RSS trend/news signal collection, cross-source evidence coverage, transparent unit economics, offline product/stock/order/expense/task records, order-linked stock deduction, return/refund state, stock restoration on return, low-stock indicators, JSON backup/restore and CSV export.
+- **v0.9.0 phone-first workflow:** public-marketplace research, a transparent source registry, independent RSS trend/news signal collection, cross-source evidence coverage, actionable source links, transparent unit economics, offline product/stock/order/expense/task records, order-linked stock deduction, return/refund state, stock restoration on return, low-stock indicators, JSON backup/restore and CSV export.
 - Offline operations records are stored only on the Android device and are not cloud-synced, backed by a server database, or automatically connected to marketplace orders.
 - Next: saved research history, purchase/discount records, richer sales reports, optional persistent cloud sync, and official marketplace order integrations where access is authorized.
 - Later: optional sync with a configured persistent database, permission-aware marketplace connectors and stronger evidence-backed recommendations. No sales, demand or profit guarantees.
