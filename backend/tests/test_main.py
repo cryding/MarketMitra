@@ -175,6 +175,21 @@ def test_empire_workspace_combines_analysis_competition_supplier_and_budget(monk
     assert sum(x["pct"] for x in body["business_plan"]["recommended_test_budget_allocation"]) == 100
     assert body["business_plan"]["scenario"]["estimated_monthly_result_after_fixed_costs_inr"] == 3200
     assert len(body["next_actions"]) >= 4
+    hub = body["research_hub"]
+    assert hub["mode"] == "free_link_hub"
+    assert len(hub["links"]) >= 15
+    assert {"Demand signals", "Marketplaces", "Supplier sourcing", "Official setup"}.issubset(
+        {link["category"] for link in hub["links"]}
+    )
+    assert all(link["url"].startswith("https://") for link in hub["links"])
+
+
+def test_marketplace_adapters_include_multiple_indian_sources():
+    from app.main import MARKETPLACE_SEARCHES
+
+    assert {"Meesho", "Flipkart", "Amazon India", "Myntra", "Snapdeal", "JioMart"}.issubset(
+        set(MARKETPLACE_SEARCHES)
+    )
 
 
 def test_supplier_links_are_search_links_not_claimed_verified_vendors():
