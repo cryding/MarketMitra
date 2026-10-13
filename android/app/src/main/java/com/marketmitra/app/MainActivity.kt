@@ -72,7 +72,8 @@ private val Border = Color(0xFFE4E8F0)
 private val Green = Color(0xFF16794B)
 
 private data class DemandSignalItem(val title: String, val source: String, val url: String, val summary: String, val publishedAt: String)
-private data class DemandSignalResponse(val summary: String, val items: List<DemandSignalItem>)
+private data class DemandResearchLink(val id: String, val name: String, val category: String, val status: String, val url: String)
+private data class DemandSignalResponse(val summary: String, val items: List<DemandSignalItem>, val researchLinks: List<DemandResearchLink>)
 
 private data class ResearchItem(
     val name: String,
@@ -113,6 +114,7 @@ private fun MarketMitraScreen() {
     var analysisSummary by remember { mutableStateOf("") }
     var demandSignalSummary by remember { mutableStateOf("") }
     var demandSignalItems by remember { mutableStateOf<List<DemandSignalItem>>(emptyList()) }
+    var demandResearchLinks by remember { mutableStateOf<List<DemandResearchLink>>(emptyList()) }
     var priceSummary by remember { mutableStateOf("") }
     var profitSummary by remember { mutableStateOf("") }
     var unitCost by remember { mutableStateOf("") }
@@ -333,6 +335,7 @@ private fun MarketMitraScreen() {
                                         }
                                         demandSignalSummary = demandSignals?.summary ?: "Independent trend/news feeds were unavailable this time. This does not mean demand is absent."
                                         demandSignalItems = demandSignals?.items ?: emptyList()
+                                        demandResearchLinks = demandSignals?.researchLinks ?: emptyList()
                                         itemsFound = response.items
                                         tips = response.tips
                                         sourceSummary = response.sourceSummary
@@ -402,7 +405,7 @@ private fun MarketMitraScreen() {
                         Column(Modifier.padding(14.dp)) {
                             Text("CROSS-SOURCE DEMAND SIGNALS", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(6.dp))
-                            Text(demandSignalSummary, color = Ink, lineHeight = 19.sp)
+                                            Text(demandSignalSummary, color = Ink, lineHeight = 19.sp)
                             if (demandSignalItems.isNotEmpty()) {
                                 Spacer(Modifier.height(8.dp))
                                 demandSignalItems.forEach { signal ->
@@ -413,6 +416,16 @@ private fun MarketMitraScreen() {
                                         if (signal.summary.isNotBlank()) Text(signal.summary, color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
                                         Text("Open original source ↗", color = Blue, fontSize = 12.sp)
                                     }
+                                }
+                            }
+                            val sourceLinks = demandResearchLinks
+                            if (sourceLinks.isNotEmpty()) {
+                                Spacer(Modifier.height(8.dp))
+                                Text("SOURCE REGISTRY", color = Blue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                sourceLinks.take(8).forEach { link ->
+                                    Text(link.name + " · " + link.category.replace("_", " "), color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                                    Text(link.status.replace("_", " ") + " · Open research source ↗", color = Blue, fontSize = 11.sp,
+                                        modifier = Modifier.clickable { openSource(context, link.url) })
                                 }
                             }
                         }
@@ -1150,7 +1163,23 @@ private fun fetchDemandSignals(query: String): DemandSignalResponse {
                 ))
             }
         }
-        return DemandSignalResponse(summary, items)
+        val researchLinks = mutableListOf<DemandResearchLink>()
+        val linksArray = json.optJSONArray("research_links")
+        if (linksArray != null) {
+            for (index in 0 until linksArray.length()) {
+                val link = linksArray.optJSONObject(index) ?: continue
+                val url = link.optString("url")
+                if (!url.startsWith("https://")) continue
+                researchLinks.add(DemandResearchLink(
+                    id = link.optString("id"),
+                    name = link.optString("name"),
+                    category = link.optString("category"),
+                    status = link.optString("integration_status"),
+                    url = url
+                ))
+            }
+        }
+        return DemandSignalResponse(summary, items, researchLinks)
     } finally {
         connection.disconnect()
     }
