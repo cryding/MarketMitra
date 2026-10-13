@@ -923,7 +923,7 @@ def _research_source_links(query: str) -> list[dict[str, str]]:
             url = "https://www.reddit.com/search/?q=" + encoded
         elif source["category"] == "trend_news" and source["id"] == "google_trends_rss":
             url = "https://trends.google.com/trends/explore?geo=IN&q=" + encoded
-        elif source["url"].endswith("=") or source["url"].endswith("/"):
+        elif source["id"] in {"meesho", "flipkart", "amazon_india", "myntra", "snapdeal", "jiomart", "google_shopping", "youtube_search", "indiamart", "tradeindia", "exportersindia"}:
             url = source["url"] + encoded
         else:
             url = source["url"]
@@ -955,7 +955,7 @@ def research_sources(
                 row["url"] = "https://www.reddit.com/search/?q=" + encoded
             elif row["id"] == "google_trends_rss":
                 row["url"] = "https://trends.google.com/trends/explore?geo=IN&q=" + encoded
-            elif row["url"].endswith("=") or row["url"].endswith("/"):
+            elif row["id"] in {"meesho", "flipkart", "amazon_india", "myntra", "snapdeal", "jiomart", "google_shopping", "youtube_search", "indiamart", "tradeindia", "exportersindia"}:
                 row["url"] = row["url"] + encoded
         sources.append(row)
     return {
