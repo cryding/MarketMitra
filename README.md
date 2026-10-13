@@ -1,13 +1,13 @@
 # MarketMitra
 
-**Universal Market Research & Data Intelligence** — an open-source Android + Python project for early-stage e-commerce research, competitor-page extraction, and business opportunity analysis.
+**Universal Market Research & Data Intelligence** — an open-source Android + Python project for early-stage business research, sourcing, unit economics and launch planning.
 
-> **Milestone 1 status:** starter implementation is being built. Product ideas returned by the demo endpoint are clearly labelled sample data, not live marketplace rankings. A scraper only fetches public pages when the host is publicly routable and the page is allowed by `robots.txt`. No login bypass, CAPTCHA bypass, paywall bypass, or private-data collection.
+> **Current development direction:** MarketMitra is evolving into a ground-level business operating toolkit. Sample product ideas remain labelled sample data. Six marketplace adapters attempt best-effort extraction only when public access and `robots.txt` permit it; individual sites may block requests or change markup. Research-hub URLs are manual discovery links, not scraped evidence or verified supplier recommendations. No login bypass, CAPTCHA bypass, paywall bypass, or private-data collection.
 
 ## What is in this repository
 
 - `android/`: Kotlin + Jetpack Compose Android client.
-- `backend/`: FastAPI service with health, sample product research, and public HTML page extraction endpoints.
+- `backend/`: FastAPI service with public-page extraction, six best-effort marketplace adapters, transparent price/unit-economics analysis, supplier discovery, budget planning and a free research/official-setup link hub.
 - `.github/workflows/ci.yml`: Python tests and Android debug APK build/artifact.
 - No paid AI APIs or paid dependencies are required for the first milestone.
 
@@ -68,10 +68,10 @@ The backend can be deployed to any compatible Python host with a free tier, but 
 
 ## Roadmap
 
-1. **Milestone 1:** Android dashboard, sample e-commerce ideas, API connection, guarded public-page metadata extraction, tests, CI APK artifact.
-2. Marketplace-specific adapters only where terms and access methods permit them.
-3. Competitor price history, CSV export, supplier research, export/HS-code datasets.
-4. Offline saved reports and transparent opportunity scoring.
+1. **v0.4.0:** modernized Android hero, grouped Business Toolkit, six best-effort marketplace adapters, free demand/price research links, supplier discovery and official business setup portals.
+2. Add stronger evidence-backed scoring, structured source coverage and actionable validation experiments without confusing search interest/listings with actual sales.
+3. Add saved projects, offline reports, CSV export and product/supplier comparison history.
+4. Add more open-data or official data connectors only where access terms, reliability and free-tier limits are clear.
 
 ## License
 
@@ -108,7 +108,9 @@ The repository workflow runs backend tests with `PYTHONPATH=.` and builds the An
 ## Empire business workspace
 
 - \`POST /api/v1/empire/workspace\` combines the live research endpoint, evidence score, observed listing-price comparison, competition activity signal, supplier-directory search links, supplier due-diligence checklist, budget allocation and an optional monthly unit-economics scenario.
-- It does not invent supplier records: supplier links open third-party search pages and require independent verification.
+- The response also includes a grouped `research_hub.links` list for demand signals (Google Trends/Search/YouTube), marketplace price checks, supplier discovery and official setup portals (Udyam, GST, FSSAI where applicable, IP India and ONDC).
+- Marketplace adapters include Meesho, Flipkart, Amazon India, Myntra, Snapdeal and JioMart. They run concurrently with bounded robots.txt and page-fetch timeouts; sources that cannot be checked are skipped rather than bypassed.
+- It does not invent supplier records: supplier links open third-party search pages and require independent verification. External research-hub links are not scraped evidence.
 - Example request:
 
 \`\`\`json
