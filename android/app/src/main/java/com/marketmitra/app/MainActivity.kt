@@ -583,6 +583,9 @@ private fun MarketMitraScreen() {
                                 Text(returnedOrders.toString(), color = if (returnedOrders > 0) Color(0xFFB54708) else Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                                 Text("₹" + returnedValue.toInt().toString() + " excluded from sales estimate", color = Muted, fontSize = 10.sp, lineHeight = 13.sp)
                             }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Column(Modifier.weight(1f).background(Page, RoundedCornerShape(10.dp)).padding(10.dp)) {
                                 Text("ESTIMATED RESULT", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 Text("₹" + estimatedResult.toInt().toString(), color = if (estimatedResult >= 0) Green else Color(0xFFB42318), fontSize = 16.sp, fontWeight = FontWeight.Bold)
