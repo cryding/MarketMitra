@@ -6,7 +6,7 @@
 
 ## What is in this repository
 
-- `android/`: Kotlin + Jetpack Compose Android client with phone-first research UI, offline product/stock, order, expense and task records, stock-linked order completion, low-stock indicators, and JSON/CSV backup tools.
+- `android/`: Kotlin + Jetpack Compose Android client with phone-first research UI, offline product/stock, order, expense and task records, stock-linked order completion, return/refund lifecycle, low-stock indicators, and JSON/CSV backup tools.
 - `backend/`: FastAPI service with public-page extraction, six best-effort marketplace adapters, transparent price/unit-economics analysis, supplier discovery, budget planning, official setup links and phone-first live research aggregation.
 - `.github/workflows/ci.yml`: Python tests and Android debug APK build/artifact.
 - No paid AI APIs or paid dependencies are required for the first milestone.
@@ -56,7 +56,7 @@ The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 
 The Android app uses the configured HTTPS backend automatically. On the phone, enter a product/category and tap **Start market research**. No terminal, local Node.js installation, report file, manual API URL, or extra setup is required. Live results depend on the production backend and on which public sources allow access.
 
-Business operations are stored on-device for offline use. Orders can link to a product by exact name/SKU; completing an order deducts stock only when the linked product exists and has sufficient units, and reopening it restores the stock. The app shows low-stock products and a clearly labelled estimated result. Use **Backup JSON**, **Restore JSON** and **Export business records to CSV** from the phone UI to protect or export records. Restoring a JSON backup replaces the current device records.
+Business operations are stored on-device for offline use. Orders can link to a product by exact name/SKU; completing a sale deducts stock only when the linked product exists and has sufficient units. Recording a return restores linked stock, excludes the returned order value from estimated sales, and permits a later resale only after checking stock again. The dashboard shows returned order count/value, low-stock products and a clearly labelled estimated result. Refunds are assumed to be full-order refunds in this estimate; marketplace fees, taxes and payment settlement are not automatically reconciled. Use **Backup JSON**, **Restore JSON** and **Export business records to CSV** from the phone UI to protect or export records. Restoring a JSON backup replaces the current device records.
 
 The Cross-Source Evidence Lens checks public RSS feeds from Google Trends India, Google News India and Reddit in parallel with marketplace research. It deduplicates links and labels source coverage separately from actual demand. Trends and news mentions do not establish purchase intent or sales volume.
 
@@ -74,9 +74,9 @@ The backend can be deployed to any compatible Python host with a free tier, but 
 
 ## Current operational scope and next milestones
 
-- **v0.7.0 phone-first workflow:** public-marketplace research, independent RSS trend/news signal collection, cross-source evidence coverage, transparent unit economics, offline product/stock/order/expense/task records, order-linked stock deduction, low-stock indicators, JSON backup/restore and CSV export.
+- **v0.8.0 phone-first workflow:** public-marketplace research, independent RSS trend/news signal collection, cross-source evidence coverage, transparent unit economics, offline product/stock/order/expense/task records, order-linked stock deduction, return/refund state, stock restoration on return, low-stock indicators, JSON backup/restore and CSV export.
 - Offline operations records are stored only on the Android device and are not cloud-synced, backed by a server database, or automatically connected to marketplace orders.
-- Next: saved research history, purchase/return/discount records, richer sales reports, optional persistent cloud sync, and official marketplace order integrations where access is authorized.
+- Next: saved research history, purchase/discount records, richer sales reports, optional persistent cloud sync, and official marketplace order integrations where access is authorized.
 - Later: optional sync with a configured persistent database, permission-aware marketplace connectors and stronger evidence-backed recommendations. No sales, demand or profit guarantees.
 
 ## Phone-only research workflow
