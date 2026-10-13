@@ -535,6 +535,8 @@ private fun MarketMitraScreen() {
                 val stockUnits = operationRecords.filter { it.type == "Product" && it.status == "Active" }.sumOf { it.quantity }
                 val openOrders = operationRecords.count { it.type == "Order" && it.status == "Open" }
                 val completedRevenue = operationRecords.filter { it.type == "Order" && it.status == "Completed" }.sumOf { it.amountInr }
+                val returnedOrders = operationRecords.count { it.type == "Order" && it.status == "Returned" }
+                val returnedValue = operationRecords.filter { it.type == "Order" && it.status == "Returned" }.sumOf { it.amountInr }
                 val recordedExpenses = operationRecords.filter { it.type == "Expense" }.sumOf { it.amountInr }
                 val completedCogs = operationRecords.filter { it.type == "Order" && it.status == "Completed" }.sumOf { order ->
                     val product = operationRecords.firstOrNull { it.type == "Product" && it.title.equals(order.linkedProduct.trim(), ignoreCase = true) }
@@ -576,6 +578,11 @@ private fun MarketMitraScreen() {
                         }
                         Spacer(Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(Modifier.weight(1f).background(Page, RoundedCornerShape(10.dp)).padding(10.dp)) {
+                                Text("RETURNS / REFUNDS", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text(returnedOrders.toString(), color = if (returnedOrders > 0) Color(0xFFB54708) else Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                Text("₹" + returnedValue.toInt().toString() + " excluded from sales estimate", color = Muted, fontSize = 10.sp, lineHeight = 13.sp)
+                            }
                             Column(Modifier.weight(1f).background(Page, RoundedCornerShape(10.dp)).padding(10.dp)) {
                                 Text("ESTIMATED RESULT", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 Text("₹" + estimatedResult.toInt().toString(), color = if (estimatedResult >= 0) Green else Color(0xFFB42318), fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -735,7 +742,22 @@ private fun MarketMitraScreen() {
                                                     val linkedProduct = operationRecords.firstOrNull {
                                                         it.type == "Product" && it.title.equals(record.linkedProduct.trim(), ignoreCase = true)
                                                     }
-                                                    if (record.status == "Open") {
+                                                    if (record.status == "Completed") {
+                                                        if (record.linkedProduct.isBlank() || linkedProduct == null) {
+                                                            message = "Return not recorded: add or restore the matching Product record first so returned stock can be tracked."
+                                                        } else {
+                                                            val updated = operationRecords.map {
+                                                                when (it.id) {
+                                                                    record.id -> it.copy(status = "Returned")
+                                                                    linkedProduct.id -> it.copy(quantity = it.quantity + record.quantity)
+                                                                    else -> it
+                                                                }
+                                                            }
+                                                            operationRecords = updated
+                                                            saveOperationRecords(context, updated)
+                                                            message = "Return recorded; stock restored. The full order total is excluded from the sales estimate."
+                                                        }
+                                                    } else if (record.status == "Open" || record.status == "Returned") {
                                                         if (record.linkedProduct.isBlank() || linkedProduct == null) {
                                                             message = "Order not completed: add a matching Product record and exact product name/SKU first."
                                                         } else if (linkedProduct.quantity < record.quantity) {
@@ -750,19 +772,8 @@ private fun MarketMitraScreen() {
                                                             }
                                                             operationRecords = updated
                                                             saveOperationRecords(context, updated)
-                                                            message = "Order completed and stock deducted for " + linkedProduct.title + "."
+                                                            message = if (record.status == "Returned") "Order sold again; stock deducted for " + linkedProduct.title + "." else "Order completed and stock deducted for " + linkedProduct.title + "."
                                                         }
-                                                    } else {
-                                                        val updated = operationRecords.map {
-                                                            when (it.id) {
-                                                                record.id -> it.copy(status = "Open")
-                                                                linkedProduct?.id -> it.copy(quantity = it.quantity + record.quantity)
-                                                                else -> it
-                                                            }
-                                                        }
-                                                        operationRecords = updated
-                                                        saveOperationRecords(context, updated)
-                                                        message = "Order reopened; linked stock restored when a matching product exists."
                                                     }
                                                 } else {
                                                     val nextStatus = when (record.type) {
@@ -776,7 +787,7 @@ private fun MarketMitraScreen() {
                                             },
                                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                             shape = RoundedCornerShape(8.dp)
-                                        ) { Text(if (record.type == "Order") "Toggle status" else if (record.type == "Task") "Done / undo" else "Archive", fontSize = 10.sp) }
+                                        ) { Text(if (record.type == "Order") when (record.status) { "Open" -> "Complete order"; "Completed" -> "Record return"; "Returned" -> "Sell again"; else -> "Order status" } else if (record.type == "Task") "Done / undo" else "Archive", fontSize = 10.sp) }
                                     }
                                     IconButton(onClick = {
                                         val updated = operationRecords.filterNot { it.id == record.id }
