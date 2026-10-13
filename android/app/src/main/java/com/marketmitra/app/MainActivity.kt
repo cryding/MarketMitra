@@ -262,7 +262,7 @@ private fun MarketMitraScreen() {
                     Column(Modifier.padding(16.dp)) {
                         Text("Find products worth researching", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
                         Spacer(Modifier.height(6.dp))
-                        Text("Search public marketplace listings and get simple research suggestions. No API keys or setup screens.", color = Muted, lineHeight = 20.sp)
+                        Text("Search public marketplace listings and get research suggestions. Core research needs no paid API key; API Anything is an optional local connector.", color = Muted, lineHeight = 20.sp)
                         Spacer(Modifier.height(14.dp))
                         OutlinedTextField(
                             value = query,
@@ -843,7 +843,7 @@ private fun fetchEmpireWorkspace(
     connection.doOutput = true
     connection.setRequestProperty("Accept", "application/json")
     connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-    connection.setRequestProperty("User-Agent", "MarketMitra-Android/0.3")
+    connection.setRequestProperty("User-Agent", "MarketMitra-Android/0.5")
     try {
         connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
         val code = connection.responseCode
