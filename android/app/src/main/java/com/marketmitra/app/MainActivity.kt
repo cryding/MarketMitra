@@ -426,6 +426,14 @@ private fun MarketMitraScreen() {
                                     "supplier_discovery" -> 3
                                     else -> 4
                                 }
+                            }.sortedBy { link ->
+                                when (link.category) {
+                                    "official_data" -> 0
+                                    "trend_news" -> 1
+                                    "marketplace" -> 2
+                                    "supplier_discovery" -> 3
+                                    else -> 4
+                                }
                             }
                             if (sourceLinks.isNotEmpty()) {
                                 Spacer(Modifier.height(8.dp))
