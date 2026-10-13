@@ -29,6 +29,17 @@ jobs:
       - name: Run tests
         run: PYTHONPATH=. pytest -q
 
+  api-anything-runner:
+    name: API Anything runner syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.0"
+      - name: Check local research runner syntax
+        run: node --check tools/api-anything/research.mjs
+
   android-debug-apk:
     name: Android debug APK
     runs-on: ubuntu-latest
