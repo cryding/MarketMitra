@@ -7,7 +7,7 @@
 ## What is in this repository
 
 - `android/`: Kotlin + Jetpack Compose Android client with modern research UI, API Anything JSON-report import, and offline product/stock, order, expense and task records.
-- `backend/`: FastAPI service with public-page extraction, six best-effort marketplace adapters, transparent price/unit-economics analysis, supplier discovery, budget planning, official setup links and API Anything report aggregation.
+- `backend/`: FastAPI service with public-page extraction, six best-effort marketplace adapters, transparent price/unit-economics analysis, supplier discovery, budget planning, official setup links and phone-first live research aggregation.
 - `tools/api-anything/research.mjs`: optional local read-only research runner for API Anything's bundled Amazon.com, YouTube and Hacker News operations.
 - `.github/workflows/ci.yml`: Python tests, API Anything runner syntax check and Android debug APK build/artifact.
 - No paid AI APIs or paid dependencies are required for the first milestone.
@@ -69,62 +69,20 @@ The backend can be deployed to any compatible Python host with a free tier, but 
 
 ## Current operational scope and next milestones
 
-- **v0.5.0 implementation:** API Anything local research runner + currency-safe aggregation endpoint + Android JSON report import; offline records for products/stock, orders, expenses and tasks; six best-effort India marketplace adapters; unit economics and business launch suggestions.
+- **v0.6.0 phone-first workflow:** built-in HTTPS research with no local CLI/report import; offline records for products/stock, orders, expenses and tasks; six best-effort India marketplace adapters; unit economics and business launch suggestions.
 - Offline operations records are stored only on the Android device and are not cloud-synced, backed by a server database, or automatically connected to marketplace orders.
 - Next: export/import backups, link order items to stock movements, supplier/product comparison history, saved research projects and CSV reports.
 - Later: optional sync with a configured persistent database, permission-aware marketplace connectors and stronger evidence-backed recommendations. No sales, demand or profit guarantees.
 
-## API Anything research connector
+## Phone-only research workflow
 
-MarketMitra can optionally enrich its own India-focused public listing research with read-only operations from [goodnight000/api-anything](https://github.com/goodnight000/api-anything). API Anything is a **local CLI/MCP tool**, not a hosted scraping API; this connector runs on your computer and sends only normalized research results to MarketMitra's aggregation endpoint.
+MarketMitra uses its own HTTPS backend for public marketplace research. From the Android app, enter a product/category and tap **Start market research**. The backend attempts public pages from Meesho, Flipkart, Amazon India, Myntra, Snapdeal and JioMart where access policy and robots.txt permit. It then presents extracted listings, visible prices, source coverage, evidence-quality notes, unit-economics scenarios, supplier discovery links and next-step suggestions.
 
-### What it can collect
-
-- **Amazon.com**: product title, ASIN and USD price from its bundled `amazon.search` operation.
-- **YouTube**: video title, channel and visible view-count text from `youtube.search`.
-- **Hacker News**: technology/business discussion results from `hacker-news.search`; relevance depends on the query.
-- The existing MarketMitra backend separately attempts India-focused Meesho, Flipkart, Amazon India, Myntra, Snapdeal and JioMart public listing extraction. These sources can be blocked or unavailable.
-
-The runner deliberately uses API Anything's `--max-tier 1` (plain HTTP only). It does not log into websites, use browser fallback, bypass CAPTCHA, or perform write operations. API Anything operations are limited to the features that have been learned and verified. **Amazon.com USD prices are never mixed with Indian INR prices**, and video views are treated as attention signals—not sales.
-
-### Install and run
-
-Requirements: Node.js 22.13+ and Git. A Chromium browser is only needed if you later teach additional site operations. API Anything is MIT-licensed and does not require a paid AI/API key for the included read operations. Its package is not yet published to npm.
-
-From Git Bash, WSL or another POSIX shell:
-
-```bash
-git clone https://github.com/goodnight000/api-anything.git
-cd api-anything
-npm ci --no-audit --no-fund
-npm install -g "$(npm pack --silent)" --no-audit --no-fund
-api-anything sites
-api-anything call amazon search "k=cotton kurti" --max-tier 1
-cd ../MarketMitra
-node tools/api-anything/research.mjs "cotton kurti"
-```
-
-The runner writes `marketmitra-api-anything-report.json` locally and submits the normalized results to `POST /api/v1/research/aggregate`. Override the API with `API_URL=http://127.0.0.1:8000` for local development. To view the extra findings inside the Android app, transfer the JSON report to your phone and tap **Import API Anything research report (JSON)**. The API response is stateless; the report file is the local saved copy. Do not upload cookies, tokens, private account data or secrets.
-
-### Teach more operations safely
-
-API Anything only knows its bundled or explicitly taught operations. To add a new site, first read its terms and access rules, inspect the public page with the API Anything skill, propose a read-only operation, and verify it with an input that was not used during learning. Do not teach operations that bypass access controls, paywalls, CAPTCHAs, or a site's restrictions. A site being listed in the MarketMitra research hub does not mean it has an API Anything adapter.
-
-```bash
-# Optional local checks
-node --check tools/api-anything/research.mjs
-cd backend && PYTHONPATH=. pytest -q
-```
-
-## License
-
-MIT. See [LICENSE](LICENSE).
-
-
-## CI troubleshooting
-
-The repository workflow runs backend tests with `PYTHONPATH=.` and builds the Android debug APK using the Android SDK on GitHub-hosted runners. Check the [Actions tab](https://github.com/cryding/MarketMitra/actions) for the latest run and artifact; an earlier failed run is not evidence of a successful current build.
-
+- No terminal, Node.js, Git command, manual JSON import, or API URL entry is required on the phone.
+- Research runs on the hosted backend; the phone is just the user interface.
+- API Anything is not required for the normal workflow because it is a local CLI/MCP tool rather than a hosted API.
+- Results may be incomplete when a marketplace blocks automated access or changes its page structure. No CAPTCHA/login/paywall bypass is used.
+- Offline Product, Order, Expense and Task records remain stored on the device; they are not yet cloud-synced.
 
 ## Advanced research and business analysis
 
