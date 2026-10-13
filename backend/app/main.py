@@ -10,6 +10,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import urllib.robotparser
+import xml.etree.ElementTree as ET
 from typing import Any, Literal
 
 from bs4 import BeautifulSoup
@@ -819,4 +820,213 @@ def empire_workspace(request: EmpireWorkspaceRequest) -> dict[str, Any]:
             {"priority": "7", "action": "Pilot gate: start with the smallest affordable test batch, track orders, conversion, returns and cash left weekly, and scale only when real unit economics support it."}
         ],
         "safety_note": "Research scores and financial projections are decision aids, not guaranteed demand, profits or business success.",
+    }
+
+
+# Independent demand-signal collection: public RSS feeds are queried separately
+# from marketplace listings so news/trend mentions are never misrepresented as sales.
+def _local_xml_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1].casefold()
+
+
+def _fetch_public_rss(name: str, url: str, query: str, *, max_items: int = 12) -> dict[str, Any]:
+    """Read a small, bounded public RSS/Atom feed; never log in or bypass access controls."""
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "MarketMitraResearchBot/0.6 (+https://github.com/cryding/MarketMitra)",
+            "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=4) as response:
+            content_type = response.headers.get("Content-Type", "").lower()
+            if not any(token in content_type for token in ("xml", "rss", "atom", "text/plain", "octet-stream")):
+                return {"source": name, "status": "unsupported_content_type", "count": 0, "items": []}
+            raw = response.read(400_001)
+            if len(raw) > 400_000:
+                return {"source": name, "status": "feed_too_large", "count": 0, "items": []}
+        root = ET.fromstring(raw)
+    except (urllib.error.URLError, TimeoutError, OSError, ET.ParseError, ValueError) as exc:
+        return {"source": name, "status": "unavailable", "detail": type(exc).__name__, "count": 0, "items": []}
+
+    query_terms = [re.sub(r"[^a-z0-9]+", "", term.casefold()) for term in query.split()]
+    query_terms = [term for term in query_terms if len(term) > 1]
+    output: list[dict[str, Any]] = []
+    for node in root.iter():
+        if _local_xml_name(node.tag) not in {"item", "entry"}:
+            continue
+        fields: dict[str, str] = {}
+        for child in list(node):
+            key = _local_xml_name(child.tag)
+            value = (child.text or "").strip()
+            if key == "link" and not value:
+                value = str(child.attrib.get("href", "")).strip()
+            if key not in fields and value:
+                fields[key] = value
+        title = fields.get("title", "").strip()
+        link = fields.get("link", "").strip()
+        summary = re.sub(r"<[^>]+>", " ", fields.get("description", fields.get("summary", "")))
+        summary = re.sub(r"\s+", " ", summary).strip()[:500]
+        if not title or not link or not link.startswith("https://"):
+            continue
+        normalized = re.sub(r"[^a-z0-9]+", " ", (title + " " + summary).casefold())
+        matched = [term for term in query_terms if term in normalized]
+        # News RSS is query-scoped; trends RSS is a general India trend feed, so
+        # return only matching titles there instead of pretending unrelated trends apply.
+        if query_terms and not matched:
+            continue
+        output.append({
+            "title": title[:240],
+            "url": link[:1200],
+            "summary": summary,
+            "published_at": fields.get("pubdate", fields.get("published", fields.get("updated", "")))[:100],
+            "source": name,
+            "signal_type": "news_mention" if "news" in name.casefold() else "search_trend",
+            "matched_terms": matched,
+        })
+        if len(output) >= max_items:
+            break
+    return {"source": name, "status": "ok", "count": len(output), "items": output}
+
+
+def _collect_demand_signals(query: str) -> dict[str, Any]:
+    """Cross-check a query against India trend RSS and query-scoped news RSS."""
+    encoded = urllib.parse.quote_plus(query)
+    feeds = [
+        (
+            "Google Trends India RSS",
+            "https://trends.google.com/trending/rss?geo=IN",
+        ),
+        (
+            "Google News India RSS",
+            "https://news.google.com/rss/search?q=" + encoded + "&hl=en-IN&gl=IN&ceid=IN:en",
+        ),
+    ]
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda row: _fetch_public_rss(row[0], row[1], query), feeds))
+    items = [item for result in results for item in result.get("items", [])]
+    unique: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    for item in items:
+        url = str(item.get("url", ""))
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            unique.append(item)
+
+    successful = sum(1 for result in results if result.get("status") == "ok")
+    source_hits = sum(1 for result in results if result.get("count", 0) > 0)
+    news_hits = sum(1 for item in unique if item.get("signal_type") == "news_mention")
+    trend_hits = sum(1 for item in unique if item.get("signal_type") == "search_trend")
+    coverage_score = min(100, successful * 25 + min(news_hits, 5) * 8 + min(trend_hits, 3) * 10)
+    recommendations: list[dict[str, str]] = []
+    if source_hits >= 2:
+        recommendations.append({
+            "action": "Cross-source corroboration found",
+            "why": "Related items appeared in more than one independent feed. This is an attention signal, not proof of orders or sales.",
+            "confidence": "early_signal",
+        })
+    if news_hits:
+        recommendations.append({
+            "action": "Review recent news and customer context",
+            "why": f"{news_hits} query-matched news item(s) were found. Open the source and judge whether each item is relevant to your exact customer and market.",
+            "confidence": "early_signal",
+        })
+    if trend_hits == 0:
+        recommendations.append({
+            "action": "Trend feed did not corroborate this exact query",
+            "why": "A missing trend match can reflect feed coverage, spelling or low trend prominence; it does not establish low demand.",
+            "confidence": "low",
+        })
+    if not unique:
+        recommendations.append({
+            "action": "Collect a broader demand sample",
+            "why": "No query-matched items were returned from these feeds. Try synonyms, regional-language terms, and direct customer interviews before making an investment decision.",
+            "confidence": "low",
+        })
+    return {
+        "method": "Cross-Source Evidence Lens",
+        "query": query,
+        "generated_at_utc": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+        "coverage_score": coverage_score,
+        "score_meaning": "Feed availability and matching-evidence coverage only; not demand, sales volume or profit.",
+        "source_summary": {"attempted": len(results), "available": successful, "with_matching_items": source_hits},
+        "sources": [{"source": r["source"], "status": r["status"], "count": r["count"]} for r in results],
+        "items": unique[:24],
+        "recommendations": recommendations,
+        "limitations": [
+            "RSS items are discovery leads; relevance and publication dates must be checked on the source page.",
+            "Google Trends RSS shows trending searches, not absolute search volume or purchases.",
+            "No source match is not evidence that demand is absent.",
+        ],
+    }
+
+
+@app.get("/api/v1/research/signals")
+def research_signals(q: str = Query(default="", min_length=2, max_length=100)) -> dict[str, Any]:
+    """Collect independent public trend/news signals without a CLI, API key or paid service."""
+    query = q.strip()
+    if len(query) < 2:
+        raise HTTPException(status_code=422, detail="Enter at least two characters.")
+    return _collect_demand_signals(query)
+
+
+class BusinessEconomicsRequest(BaseModel):
+    """Monthly business P&L/cashflow calculator with explicit, user-provided inputs."""
+    revenue_inr: float = Field(default=0, ge=0, le=1_000_000_000_000)
+    opening_inventory_cost_inr: float = Field(default=0, ge=0, le=1_000_000_000_000)
+    purchases_inr: float = Field(default=0, ge=0, le=1_000_000_000_000)
+    closing_inventory_cost_inr: float = Field(default=0, ge=0, le=1_000_000_000_000)
+    operating_expenses_inr: float = Field(default=0, ge=0, le=1_000_000_000_000)
+    marketplace_fees_inr: float = Field(default=0, ge=0, le=1_000_000_000_000)
+    shipping_and_packaging_inr: float = Field(default=0, ge=0, le=1_000_000_000_000)
+    returns_and_refunds_inr: float = Field(default=0, ge=0, le=1_000_000_000_000)
+    taxes_inr: float = Field(default=0, ge=0, le=1_000_000_000_000)
+    cash_received_inr: float = Field(default=0, ge=0, le=1_000_000_000_000)
+    cash_paid_inr: float = Field(default=0, ge=0, le=1_000_000_000_000)
+    monthly_fixed_costs_inr: float = Field(default=0, ge=0, le=1_000_000_000_000)
+    average_order_value_inr: float | None = Field(default=None, gt=0, le=1_000_000_000)
+    target_net_margin_pct: float = Field(default=15, ge=0, le=99.9)
+
+
+@app.post("/api/v1/operations/economics")
+def business_economics(request: BusinessEconomicsRequest) -> dict[str, Any]:
+    """Calculate gross profit, net profit, cash movement, margin and break-even transparently."""
+    cogs = max(0.0, request.opening_inventory_cost_inr + request.purchases_inr - request.closing_inventory_cost_inr)
+    net_sales = max(0.0, request.revenue_inr - request.returns_and_refunds_inr)
+    gross_profit = net_sales - cogs
+    operating_costs = (
+        request.operating_expenses_inr + request.marketplace_fees_inr
+        + request.shipping_and_packaging_inr + request.taxes_inr
+    )
+    net_profit = gross_profit - operating_costs
+    cash_movement = request.cash_received_inr - request.cash_paid_inr
+    margin_pct = net_profit / net_sales * 100 if net_sales > 0 else None
+    required_revenue = (
+        (request.monthly_fixed_costs_inr / (request.target_net_margin_pct / 100))
+        if request.target_net_margin_pct > 0 else None
+    )
+    break_even_orders = (
+        math.ceil(request.monthly_fixed_costs_inr / request.average_order_value_inr)
+        if request.average_order_value_inr and request.average_order_value_inr > 0 else None
+    )
+    return {
+        "mode": "business_economics_v1",
+        "currency": "INR",
+        "inputs": request.model_dump(),
+        "cost_of_goods_sold_inr": _money(cogs),
+        "net_sales_after_refunds_inr": _money(net_sales),
+        "gross_profit_inr": _money(gross_profit),
+        "operating_costs_inr": _money(operating_costs),
+        "net_profit_before_unentered_costs_inr": _money(net_profit),
+        "net_margin_pct": _money(margin_pct) if margin_pct is not None else None,
+        "cash_movement_inr": _money(cash_movement),
+        "cash_warning": "Profit and cash movement are different: unpaid customer invoices, supplier credit and inventory purchases can change cash without changing profit in the same period.",
+        "revenue_target_for_fixed_costs_and_margin_inr": _money(required_revenue) if required_revenue is not None else None,
+        "break_even_orders_at_average_order_value": break_even_orders,
+        "warnings": [
+            "Enter complete period totals and inventory values; missing costs make profit look higher than reality.",
+            "This calculator does not file taxes or replace an accountant.",
+            "Break-even orders based on average order value alone are a rough sales-target indicator, not contribution-margin break-even.",
+        ],
     }
