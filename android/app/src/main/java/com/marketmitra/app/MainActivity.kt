@@ -143,6 +143,65 @@ private fun MarketMitraScreen() {
     var operationNote by remember { mutableStateOf("") }
     var operationLinkedProduct by remember { mutableStateOf("") }
     var operationRecords by remember { mutableStateOf(loadOperationRecords(context)) }
+    val backupOperationsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                val array = org.json.JSONArray()
+                operationRecords.forEach { record ->
+                    array.put(JSONObject()
+                        .put("id", record.id)
+                        .put("type", record.type)
+                        .put("title", record.title)
+                        .put("quantity", record.quantity)
+                        .put("amountInr", record.amountInr)
+                        .put("status", record.status)
+                        .put("note", record.note)
+                        .put("linkedProduct", record.linkedProduct))
+                }
+                val output = context.contentResolver.openOutputStream(uri)
+                    ?: throw IllegalStateException("Could not open the selected file.")
+                output.bufferedWriter().use { it.write(array.toString(2)) }
+                message = "Backed up ${operationRecords.size} business record(s) to JSON."
+            }.onFailure { error -> message = "Backup failed: " + (error.message ?: "could not write file") }
+        }
+    }
+    val restoreOperationsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                    ?: throw IllegalStateException("Could not read the selected backup.")
+                val array = org.json.JSONArray(raw)
+                val imported = (0 until array.length()).mapNotNull { index ->
+                    val obj = array.optJSONObject(index) ?: return@mapNotNull null
+                    val title = obj.optString("title").trim()
+                    val type = obj.optString("type", "Task")
+                    val quantity = obj.optDouble("quantity", 1.0)
+                    val amount = obj.optDouble("amountInr", 0.0)
+                    if (title.isBlank() || type !in setOf("Product", "Order", "Expense", "Task") || quantity <= 0 || amount < 0) {
+                        return@mapNotNull null
+                    }
+                    OperationRecord(
+                        id = obj.optLong("id", System.currentTimeMillis() + index),
+                        type = type,
+                        title = title,
+                        quantity = quantity,
+                        amountInr = amount,
+                        status = obj.optString("status", if (type == "Order") "Open" else "Active"),
+                        note = obj.optString("note"),
+                        linkedProduct = obj.optString("linkedProduct")
+                    )
+                }
+                if (imported.isEmpty()) throw IllegalStateException("No valid business records were found in this backup.")
+                operationRecords = imported
+                saveOperationRecords(context, imported)
+                message = "Restored ${imported.size} business record(s). Current device records were replaced."
+            }.onFailure { error -> message = "Restore failed: " + (error.message ?: "invalid backup file") }
+        }
+    }
     val exportOperationsLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv")
     ) { uri ->
@@ -529,6 +588,18 @@ private fun MarketMitraScreen() {
                             }
                         }
                         Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { backupOperationsLauncher.launch("marketmitra-backup.json") },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp)
+                            ) { Text("Backup JSON") }
+                            OutlinedButton(
+                                onClick = { restoreOperationsLauncher.launch(arrayOf("application/json", "text/json", "*/*")) },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp)
+                            ) { Text("Restore JSON") }
+                        }
                         OutlinedButton(
                             onClick = { exportOperationsLauncher.launch("marketmitra-operations.csv") },
                             modifier = Modifier.fillMaxWidth(),
