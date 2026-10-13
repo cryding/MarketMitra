@@ -200,6 +200,37 @@ def test_marketplace_adapters_include_multiple_indian_sources():
     )
 
 
+def test_api_anything_aggregate_keeps_currencies_separate_and_suggests_validation():
+    response = client.post("/api/v1/research/aggregate", json={
+        "query": "cotton kurti",
+        "collected_at_utc": "2026-10-13T10:00:00Z",
+        "sources": [
+            {"name": "API Anything / Amazon.com", "ok": True, "status": "ok", "count": 2, "tier": 1, "latency_ms": 500},
+            {"name": "API Anything / YouTube", "ok": True, "status": "ok", "count": 1, "tier": 1, "latency_ms": 400},
+            {"name": "API Anything / Hacker News", "ok": False, "status": "blocked", "count": 0}
+        ],
+        "items": [
+            {"title": "Cotton Kurti A", "source": "API Anything / Amazon.com", "kind": "product", "url": "https://www.amazon.com/dp/B000000001", "price": "$10.00", "currency": "USD", "metadata": {"market": "US"}},
+            {"title": "Cotton Kurti B", "source": "API Anything / Amazon.com", "kind": "product", "url": "https://www.amazon.com/dp/B000000002", "price": "$20.00", "currency": "USD"},
+            {"title": "Kurti review and styling ideas", "source": "API Anything / YouTube", "kind": "video", "url": "https://www.youtube.com/watch?v=abc123", "metadata": {"views": "1,000 views"}}
+        ]
+    })
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mode"] == "api_anything_research_aggregate"
+    assert body["source_summary"]["with_results"] == 2
+    assert body["source_summary"]["kind_counts"]["video"] == 1
+    assert body["price_summaries_by_currency"]["USD"]["median"] == 15
+    assert "INR" not in body["price_summaries_by_currency"]
+    assert any("USD listing prices" in row["action"] for row in body["recommendations"])
+    assert any("Video views" in row["why"] for row in body["recommendations"])
+
+
+def test_api_anything_aggregate_rejects_short_query():
+    response = client.post("/api/v1/research/aggregate", json={"query": "x"})
+    assert response.status_code == 422
+
+
 def test_supplier_links_are_search_links_not_claimed_verified_vendors():
     from app.main import _supplier_search_links
 
