@@ -894,6 +894,90 @@ def _fetch_public_rss(name: str, url: str, query: str, *, max_items: int = 12) -
     return {"source": name, "status": "ok", "count": len(output), "items": output}
 
 
+RESEARCH_SOURCE_CATALOG: list[dict[str, str]] = [
+    {"id": "google_trends_rss", "name": "Google Trends India RSS", "category": "trend_news", "integration_status": "live_feed", "access_mode": "public_rss", "url": "https://trends.google.com/trending/rss?geo=IN", "purpose": "Trending search discovery", "limitations": "Not absolute search volume, purchase intent, or sales data."},
+    {"id": "google_news_rss", "name": "Google News India RSS", "category": "trend_news", "integration_status": "live_feed", "access_mode": "public_rss", "url": "https://news.google.com/", "purpose": "Query-matched recent news context", "limitations": "News coverage can be biased and is not proof of customer demand."},
+    {"id": "reddit_search_rss", "name": "Public Reddit Search RSS", "category": "trend_news", "integration_status": "live_feed", "access_mode": "public_rss", "url": "https://www.reddit.com/", "purpose": "Public discussions and customer objections", "limitations": "Anecdotal posts; not a representative customer survey."},
+    {"id": "meesho", "name": "Meesho", "category": "marketplace", "integration_status": "best_effort_adapter", "access_mode": "public_search_page", "url": "https://www.meesho.com/search?q=", "purpose": "Visible India marketplace listings and prices", "limitations": "May block automated access or change page markup."},
+    {"id": "flipkart", "name": "Flipkart", "category": "marketplace", "integration_status": "best_effort_adapter", "access_mode": "public_search_page", "url": "https://www.flipkart.com/search?q=", "purpose": "Visible India marketplace listings and prices", "limitations": "May block automated access or change page markup."},
+    {"id": "amazon_india", "name": "Amazon India", "category": "marketplace", "integration_status": "best_effort_adapter", "access_mode": "public_search_page", "url": "https://www.amazon.in/s?k=", "purpose": "Visible India marketplace listings and prices", "limitations": "May block automated access or change page markup."},
+    {"id": "myntra", "name": "Myntra", "category": "marketplace", "integration_status": "best_effort_adapter", "access_mode": "public_search_page", "url": "https://www.myntra.com/search?q=", "purpose": "Fashion listings and visible prices", "limitations": "May block automated access or change page markup."},
+    {"id": "snapdeal", "name": "Snapdeal", "category": "marketplace", "integration_status": "best_effort_adapter", "access_mode": "public_search_page", "url": "https://www.snapdeal.com/search?keyword=", "purpose": "Visible marketplace listings and prices", "limitations": "May block automated access or change page markup."},
+    {"id": "jiomart", "name": "JioMart", "category": "marketplace", "integration_status": "best_effort_adapter", "access_mode": "public_search_page", "url": "https://www.jiomart.com/search/", "purpose": "Visible marketplace listings and prices", "limitations": "May block automated access or change page markup."},
+    {"id": "ogd_india", "name": "Open Government Data Platform India", "category": "official_data", "integration_status": "discovery_only", "access_mode": "official_dataset_portal", "url": "https://data.gov.in/", "purpose": "Find public government datasets for market, agriculture, population, and economic context", "limitations": "Not yet ingested automatically; dataset licensing, freshness, and schema must be checked per dataset."},
+    {"id": "api_setu", "name": "API Setu", "category": "official_data", "integration_status": "discovery_only", "access_mode": "official_api_catalog", "url": "https://apisetu.gov.in/", "purpose": "Discover official APIs and access conditions", "limitations": "Each API can require registration, approval, or credentials; no private API is assumed accessible."},
+    {"id": "google_shopping", "name": "Google Shopping Search", "category": "price_discovery", "integration_status": "discovery_only", "access_mode": "search_link", "url": "https://www.google.com/search?tbm=shop&q=", "purpose": "Manual price cross-check", "limitations": "Search link only; results are not collected as verified evidence by this source registry."},
+    {"id": "youtube_search", "name": "YouTube Search", "category": "content_discovery", "integration_status": "discovery_only", "access_mode": "search_link", "url": "https://www.youtube.com/results?search_query=", "purpose": "Video topics, creator coverage, and content competition discovery", "limitations": "Search link only; view counts do not equal product demand."},
+    {"id": "indiamart", "name": "IndiaMART", "category": "supplier_discovery", "integration_status": "discovery_only", "access_mode": "search_link", "url": "https://dir.indiamart.com/search.mp?ss=", "purpose": "Supplier lead discovery", "limitations": "Leads are unverified; verify GST, samples, MOQ, payment terms, and business identity."},
+    {"id": "tradeindia", "name": "TradeIndia", "category": "supplier_discovery", "integration_status": "discovery_only", "access_mode": "search_link", "url": "https://www.tradeindia.com/search.html?keyword=", "purpose": "Supplier lead discovery", "limitations": "Leads are unverified; verify credentials and samples before payment."},
+    {"id": "exportersindia", "name": "ExportersIndia", "category": "supplier_discovery", "integration_status": "discovery_only", "access_mode": "search_link", "url": "https://www.exportersindia.com/search.php?srch_catg_ty=prod&term=", "purpose": "Supplier and manufacturer lead discovery", "limitations": "Leads are unverified; verify credentials and samples before payment."},
+]
+
+def _research_source_links(query: str) -> list[dict[str, str]]:
+    encoded = urllib.parse.quote_plus(query.strip())
+    links: list[dict[str, str]] = []
+    for source in RESEARCH_SOURCE_CATALOG:
+        if source["category"] == "trend_news" and source["id"] == "google_news_rss":
+            url = "https://news.google.com/rss/search?q=" + encoded + "&hl=en-IN&gl=IN&ceid=IN:en"
+        elif source["category"] == "trend_news" and source["id"] == "reddit_search_rss":
+            url = "https://www.reddit.com/search/?q=" + encoded
+        elif source["category"] == "trend_news" and source["id"] == "google_trends_rss":
+            url = "https://trends.google.com/trends/explore?geo=IN&q=" + encoded
+        elif source["url"].endswith("=") or source["url"].endswith("/"):
+            url = source["url"] + encoded
+        else:
+            url = source["url"]
+        links.append({"id": source["id"], "name": source["name"], "category": source["category"], "integration_status": source["integration_status"], "url": url})
+    return links
+
+
+@app.get("/api/v1/research/sources")
+def research_sources(
+    category: str | None = Query(default=None, min_length=2, max_length=40),
+    q: str = Query(default="", max_length=100),
+) -> dict[str, Any]:
+    """Return a transparent catalogue of integrated feeds, best-effort scrapers, and discovery-only sources."""
+    normalized_category = category.strip().lower() if category else None
+    known_categories = {source["category"] for source in RESEARCH_SOURCE_CATALOG}
+    if normalized_category and normalized_category not in known_categories:
+        raise HTTPException(status_code=422, detail="Unknown category. Available categories: " + ", ".join(sorted(known_categories)))
+    query = q.strip()
+    sources = []
+    for source in RESEARCH_SOURCE_CATALOG:
+        if normalized_category and source["category"] != normalized_category:
+            continue
+        row = dict(source)
+        if query:
+            encoded = urllib.parse.quote_plus(query)
+            if row["id"] == "google_news_rss":
+                row["url"] = "https://news.google.com/rss/search?q=" + encoded + "&hl=en-IN&gl=IN&ceid=IN:en"
+            elif row["id"] == "reddit_search_rss":
+                row["url"] = "https://www.reddit.com/search/?q=" + encoded
+            elif row["id"] == "google_trends_rss":
+                row["url"] = "https://trends.google.com/trends/explore?geo=IN&q=" + encoded
+            elif row["url"].endswith("=") or row["url"].endswith("/"):
+                row["url"] = row["url"] + encoded
+        sources.append(row)
+    return {
+        "catalogue": "MarketMitra Research Source Registry",
+        "version": "1.0",
+        "query": query or None,
+        "count": len(sources),
+        "categories": sorted(known_categories),
+        "integration_status_legend": {
+            "live_feed": "Fetched by the hosted research-signals endpoint when available.",
+            "best_effort_adapter": "A permitted public-page adapter; access may fail or markup may change.",
+            "discovery_only": "A link for manual research, not an automatically ingested data source.",
+        },
+        "sources": sources,
+        "policy": [
+            "Use public and permitted data only; respect source terms, robots.txt, rate limits, copyright and privacy.",
+            "Never bypass login, CAPTCHA, paywall, access controls, or collect private account data.",
+            "Check dataset licences, update dates, geography, and definitions before analysis or commercial use.",
+        ],
+    }
+
+
 def _collect_demand_signals(query: str) -> dict[str, Any]:
     """Cross-check a query against India trend RSS and query-scoped news RSS."""
     encoded = urllib.parse.quote_plus(query)
@@ -970,6 +1054,7 @@ def _collect_demand_signals(query: str) -> dict[str, Any]:
         "source_summary": {"attempted": len(results), "available": successful, "with_matching_items": source_hits},
         "sources": [{"source": r["source"], "status": r["status"], "count": r["count"]} for r in results],
         "items": unique[:24],
+        "research_links": _research_source_links(query),
         "recommendations": recommendations,
         "limitations": [
             "RSS items are discovery leads; relevance and publication dates must be checked on the source page.",
