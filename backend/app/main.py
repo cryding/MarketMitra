@@ -882,7 +882,11 @@ def _fetch_public_rss(name: str, url: str, query: str, *, max_items: int = 12) -
             "summary": summary,
             "published_at": fields.get("pubdate", fields.get("published", fields.get("updated", "")))[:100],
             "source": name,
-            "signal_type": "news_mention" if "news" in name.casefold() else "search_trend",
+            "signal_type": (
+                "news_mention" if "news" in name.casefold()
+                else "customer_discussion" if "reddit" in name.casefold()
+                else "search_trend"
+            ),
             "matched_terms": matched,
         })
         if len(output) >= max_items:
@@ -902,6 +906,10 @@ def _collect_demand_signals(query: str) -> dict[str, Any]:
             "Google News India RSS",
             "https://news.google.com/rss/search?q=" + encoded + "&hl=en-IN&gl=IN&ceid=IN:en",
         ),
+        (
+            "Public Reddit Search RSS",
+            "https://www.reddit.com/search.rss?q=" + encoded + "&sort=new&t=month",
+        ),
     ]
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(lambda row: _fetch_public_rss(row[0], row[1], query), feeds))
@@ -918,9 +926,10 @@ def _collect_demand_signals(query: str) -> dict[str, Any]:
     source_hits = sum(1 for result in results if result.get("count", 0) > 0)
     news_hits = sum(1 for item in unique if item.get("signal_type") == "news_mention")
     trend_hits = sum(1 for item in unique if item.get("signal_type") == "search_trend")
+    discussion_hits = sum(1 for item in unique if item.get("signal_type") == "customer_discussion")
     # Score corroboration breadth, not raw article volume. Ten articles from one feed
-    # must not outweigh a missing independent source.
-    coverage_score = min(100, source_hits * 35 + min(news_hits, 3) * 5 + min(trend_hits, 3) * 5)
+    # must not outweigh missing independent sources.
+    coverage_score = min(100, source_hits * 30 + min(news_hits, 2) * 5 + min(trend_hits, 2) * 5 + min(discussion_hits, 2) * 5)
     recommendations: list[dict[str, str]] = []
     if source_hits >= 2:
         recommendations.append({
@@ -932,6 +941,12 @@ def _collect_demand_signals(query: str) -> dict[str, Any]:
         recommendations.append({
             "action": "Review recent news and customer context",
             "why": f"{news_hits} query-matched news item(s) were found. Open the source and judge whether each item is relevant to your exact customer and market.",
+            "confidence": "early_signal",
+        })
+    if discussion_hits:
+        recommendations.append({
+            "action": "Read public customer discussions for objections and unmet needs",
+            "why": f"{discussion_hits} query-matched discussion item(s) were found. Treat posts as individual opinions, not a representative customer survey.",
             "confidence": "early_signal",
         })
     if trend_hits == 0:
@@ -958,7 +973,7 @@ def _collect_demand_signals(query: str) -> dict[str, Any]:
         "recommendations": recommendations,
         "limitations": [
             "RSS items are discovery leads; relevance and publication dates must be checked on the source page.",
-            "Google Trends RSS shows trending searches, not absolute search volume or purchases.",
+            "Google Trends RSS shows trending searches, not absolute search volume or purchases. Public forum posts are anecdotal and not representative survey data.",
             "No source match is not evidence that demand is absent.",
         ],
     }
