@@ -418,7 +418,15 @@ private fun MarketMitraScreen() {
                                     }
                                 }
                             }
-                            val sourceLinks = demandResearchLinks
+                            val sourceLinks = demandResearchLinks.sortedBy { link ->
+                                when (link.category) {
+                                    "official_data" -> 0
+                                    "trend_news" -> 1
+                                    "marketplace" -> 2
+                                    "supplier_discovery" -> 3
+                                    else -> 4
+                                }
+                            }
                             if (sourceLinks.isNotEmpty()) {
                                 Spacer(Modifier.height(8.dp))
                                 Text("SOURCE REGISTRY", color = Blue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
