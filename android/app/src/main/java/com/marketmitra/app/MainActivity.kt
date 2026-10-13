@@ -69,6 +69,9 @@ private val Page = Color(0xFFF6F8FC)
 private val Border = Color(0xFFE4E8F0)
 private val Green = Color(0xFF16794B)
 
+private data class DemandSignalItem(val title: String, val source: String, val url: String, val summary: String, val publishedAt: String)
+private data class DemandSignalResponse(val summary: String, val items: List<DemandSignalItem>)
+
 private data class ResearchItem(
     val name: String,
     val price: String,
@@ -106,6 +109,8 @@ private fun MarketMitraScreen() {
     var tips by remember { mutableStateOf<List<OpportunityTip>>(emptyList()) }
     var sourceSummary by remember { mutableStateOf("Search products to fetch current public marketplace results.") }
     var analysisSummary by remember { mutableStateOf("") }
+    var demandSignalSummary by remember { mutableStateOf("") }
+    var demandSignalItems by remember { mutableStateOf<List<DemandSignalItem>>(emptyList()) }
     var priceSummary by remember { mutableStateOf("") }
     var profitSummary by remember { mutableStateOf("") }
     var unitCost by remember { mutableStateOf("") }
@@ -225,6 +230,8 @@ private fun MarketMitraScreen() {
                                     itemsFound = emptyList()
                                     tips = emptyList()
                                     analysisSummary = ""
+                                    demandSignalSummary = ""
+                                    demandSignalItems = emptyList()
                                     priceSummary = ""
                                     profitSummary = ""
                                     competitionSummary = ""
@@ -236,6 +243,11 @@ private fun MarketMitraScreen() {
                                         val response = withContext(Dispatchers.IO) {
                                             fetchEmpireWorkspace(query.trim(), unitCost, sellingPrice, packagingCost, shippingCost, marketplaceFee, returnLoss, adsCost, startupBudget, monthlyFixedCosts, targetOrders, sourcingLocation)
                                         }
+                                        val demandSignals = withContext(Dispatchers.IO) {
+                                            runCatching { fetchDemandSignals(query.trim()) }.getOrNull()
+                                        }
+                                        demandSignalSummary = demandSignals?.summary ?: "Independent trend/news feeds were unavailable this time. This does not mean demand is absent."
+                                        demandSignalItems = demandSignals?.items ?: emptyList()
                                         itemsFound = response.items
                                         tips = response.tips
                                         sourceSummary = response.sourceSummary
@@ -290,6 +302,34 @@ private fun MarketMitraScreen() {
                         if (hasSearched) {
                             Spacer(Modifier.height(8.dp))
                             Text(sourceSummary, color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
+                        }
+                    }
+                }
+            }
+
+            if (demandSignalSummary.isNotBlank()) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        shape = RoundedCornerShape(14.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Border)
+                    ) {
+                        Column(Modifier.padding(14.dp)) {
+                            Text("CROSS-SOURCE DEMAND SIGNALS", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(6.dp))
+                            Text(demandSignalSummary, color = Ink, lineHeight = 19.sp)
+                            if (demandSignalItems.isNotEmpty()) {
+                                Spacer(Modifier.height(8.dp))
+                                demandSignalItems.forEach { signal ->
+                                    Divider(color = Border, modifier = Modifier.padding(vertical = 7.dp))
+                                    Column(Modifier.fillMaxWidth().clickable { openSource(context, signal.url) }) {
+                                        Text(signal.title, color = Ink, fontWeight = FontWeight.SemiBold, lineHeight = 19.sp)
+                                        Text(signal.source + if (signal.publishedAt.isNotBlank()) " · " + signal.publishedAt else "", color = Muted, fontSize = 11.sp)
+                                        if (signal.summary.isNotBlank()) Text(signal.summary, color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
+                                        Text("Open original source ↗", color = Blue, fontSize = 12.sp)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -873,6 +913,55 @@ private fun fetchEmpireWorkspace(
             }
         }
         return LiveResponse(found, recommendations, sourceSummary, analysisSummary, priceSummary, profitSummary, competitionSummary, businessPlanSummary, supplierLinks, researchLinks)
+    } finally {
+        connection.disconnect()
+    }
+}
+
+private fun fetchDemandSignals(query: String): DemandSignalResponse {
+    val baseUrl = BuildConfig.API_BASE_URL.trimEnd('/')
+    val encodedQuery = URLEncoder.encode(query, "UTF-8")
+    val connection = (URL("$baseUrl/api/v1/research/signals?q=$encodedQuery").openConnection() as HttpURLConnection)
+    connection.requestMethod = "GET"
+    connection.connectTimeout = 5_000
+    connection.readTimeout = 10_000
+    connection.setRequestProperty("Accept", "application/json")
+    connection.setRequestProperty("User-Agent", "MarketMitra-Android/0.6")
+    try {
+        val code = connection.responseCode
+        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+        val body = stream?.bufferedReader()?.use { it.readText() } ?: "{}"
+        val json = JSONObject(body)
+        if (code !in 200..299) throw IllegalStateException(json.optString("detail", "Demand signal request failed (HTTP $code)."))
+        val score = json.optInt("coverage_score")
+        val summaryObject = json.optJSONObject("source_summary") ?: JSONObject()
+        val sourceArray = json.optJSONArray("sources")
+        val sourceLines = mutableListOf<String>()
+        if (sourceArray != null) {
+            for (index in 0 until sourceArray.length()) {
+                val source = sourceArray.optJSONObject(index) ?: continue
+                sourceLines.add(source.optString("source") + ": " + source.optString("status") + " (" + source.optInt("count") + ")")
+            }
+        }
+        val summary = "Cross-Source Evidence Lens · Coverage $score/100 (feed/evidence coverage only, not sales demand). " +
+            summaryObject.optInt("with_matching_items") + " source(s) returned matching items.\n" + sourceLines.joinToString(" · ")
+        val items = mutableListOf<DemandSignalItem>()
+        val array = json.optJSONArray("items")
+        if (array != null) {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val url = item.optString("url")
+                if (!url.startsWith("https://")) continue
+                items.add(DemandSignalItem(
+                    title = item.optString("title"),
+                    source = item.optString("source"),
+                    url = url,
+                    summary = item.optString("summary"),
+                    publishedAt = item.optString("published_at")
+                ))
+            }
+        }
+        return DemandSignalResponse(summary, items)
     } finally {
         connection.disconnect()
     }
