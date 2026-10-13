@@ -667,10 +667,13 @@ def empire_workspace(request: EmpireWorkspaceRequest) -> dict[str, Any]:
         },
         "business_plan": business_plan,
         "next_actions": [
-            {"priority": "1", "action": "Verify the top comparable listings and collect exact landed prices, shipping, return and quality details."},
-            {"priority": "2", "action": "Contact at least three suppliers and compare samples, MOQ, lead time, invoice and replacement terms."},
-            {"priority": "3", "action": "Recalculate profit with actual platform fees, taxes, returns and advertising cost before buying inventory."},
-            {"priority": "4", "action": "Test the smallest affordable batch, track real conversion and returns, then decide whether to scale or stop."}
+            {"priority": "1", "action": "Demand gate: use the research hub to check search interest, customer questions and competing offers. Record evidence from at least three independent sources; listing counts alone are not demand."},
+            {"priority": "2", "action": "Customer gate: speak to 10-20 likely buyers or test a simple catalogue/interest form before placing a bulk order. Record objections, preferred variants and acceptable prices."},
+            {"priority": "3", "action": "Competition gate: compare at least 10 like-for-like offers where possible, including material/specification, delivery, reviews, returns and total delivered price."},
+            {"priority": "4", "action": "Supplier gate: contact at least three suppliers; request samples, written MOQ, GST invoice/business identity, lead time, defect policy and replacement terms. Independently verify every supplier."},
+            {"priority": "5", "action": "Profit gate: calculate landed cost, packaging, shipping, marketplace/payment fees, taxes, return loss, discounts and ads. Reject or reprice any scenario without positive contribution."},
+            {"priority": "6", "action": "Compliance gate: check product-specific licences, labelling, tax and marketplace eligibility on official sources before listing. Food products may require FSSAI; requirements depend on the actual business."},
+            {"priority": "7", "action": "Pilot gate: start with the smallest affordable test batch, track orders, conversion, returns and cash left weekly, and scale only when real unit economics support it."}
         ],
         "safety_note": "Research scores and financial projections are decision aids, not guaranteed demand, profits or business success.",
     }
