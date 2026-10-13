@@ -6,10 +6,9 @@
 
 ## What is in this repository
 
-- `android/`: Kotlin + Jetpack Compose Android client with modern research UI, API Anything JSON-report import, and offline product/stock, order, expense and task records.
+- `android/`: Kotlin + Jetpack Compose Android client with phone-first research UI, offline product/stock, order, expense and task records, stock-linked order completion, low-stock indicators, and JSON/CSV backup tools.
 - `backend/`: FastAPI service with public-page extraction, six best-effort marketplace adapters, transparent price/unit-economics analysis, supplier discovery, budget planning, official setup links and phone-first live research aggregation.
-- `tools/api-anything/research.mjs`: optional local read-only research runner for API Anything's bundled Amazon.com, YouTube and Hacker News operations.
-- `.github/workflows/ci.yml`: Python tests, API Anything runner syntax check and Android debug APK build/artifact.
+- `.github/workflows/ci.yml`: Python tests and Android debug APK build/artifact.
 - No paid AI APIs or paid dependencies are required for the first milestone.
 
 ## Run the backend locally
@@ -33,7 +32,7 @@ Open `http://127.0.0.1:8000/docs` for the API docs and `http://127.0.0.1:8000/he
 - `GET /health` — service health.
 - `GET /api/v1/research/products?q=kurti` — deterministic sample product ideas (not live market data).
 - `POST /api/v1/scrape` with JSON `{"url":"https://example.com/product-page"}` — extracts a limited set of metadata from a public HTML page, subject to safety and robots checks.
-- `GET /api/v1/research/signals?q=cotton%20kurti` — collects public Google Trends India RSS and query-scoped Google News India RSS items; it returns source coverage and cautious cross-source suggestions, not sales data.
+- `GET /api/v1/research/signals?q=cotton%20kurti` — collects public Google Trends India RSS, query-scoped Google News India RSS and public Reddit search RSS items; it returns source coverage and cautious cross-source suggestions, not sales data.
 - `POST /api/v1/operations/economics` — calculates COGS, net sales after refunds, gross profit, operating costs, net-profit estimate, cash movement and a rough sales target from explicit period totals.
 
 Example:
@@ -59,7 +58,7 @@ The Android app uses the configured HTTPS backend automatically. On the phone, e
 
 Business operations are stored on-device for offline use. Orders can link to a product by exact name/SKU; completing an order deducts stock only when the linked product exists and has sufficient units, and reopening it restores the stock. The app shows low-stock products and a clearly labelled estimated result. Use **Backup JSON**, **Restore JSON** and **Export business records to CSV** from the phone UI to protect or export records. Restoring a JSON backup replaces the current device records.
 
-The Cross-Source Evidence Lens checks public RSS feeds from Google Trends India and Google News India in parallel with marketplace research. It deduplicates links and labels source coverage separately from actual demand. Trends and news mentions do not establish purchase intent or sales volume.
+The Cross-Source Evidence Lens checks public RSS feeds from Google Trends India, Google News India and Reddit in parallel with marketplace research. It deduplicates links and labels source coverage separately from actual demand. Trends and news mentions do not establish purchase intent or sales volume.
 
 ## Free deployment notes
 
@@ -77,7 +76,7 @@ The backend can be deployed to any compatible Python host with a free tier, but 
 
 - **v0.7.0 phone-first workflow:** public-marketplace research, independent RSS trend/news signal collection, cross-source evidence coverage, transparent unit economics, offline product/stock/order/expense/task records, order-linked stock deduction, low-stock indicators, JSON backup/restore and CSV export.
 - Offline operations records are stored only on the Android device and are not cloud-synced, backed by a server database, or automatically connected to marketplace orders.
-- Next: export/import backups, link order items to stock movements, supplier/product comparison history, saved research projects and CSV reports.
+- Next: saved research history, purchase/return/discount records, richer sales reports, optional persistent cloud sync, and official marketplace order integrations where access is authorized.
 - Later: optional sync with a configured persistent database, permission-aware marketplace connectors and stronger evidence-backed recommendations. No sales, demand or profit guarantees.
 
 ## Phone-only research workflow
